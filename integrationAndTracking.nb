@@ -1,0 +1,453 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 10.4' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       158,          7]
+NotebookDataLength[     16021,        445]
+NotebookOptionsPosition[     14647,        395]
+NotebookOutlinePosition[     14992,        410]
+CellTagsIndexPosition[     14949,        407]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["Integration and Tracking", "Chapter",
+ CellChangeTimes->{{3.6766385915202427`*^9, 3.676638594769353*^9}}],
+
+Cell["For a demo scene", "Text",
+ CellChangeTimes->{{3.676638634628782*^9, 3.676638637226206*^9}}],
+
+Cell[BoxData["Quit"], "Input",
+ CellChangeTimes->{{3.676641718601501*^9, 3.6766417191015043`*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"Shutdown", "[", "]"}]], "Input",
+ CellChangeTimes->{{3.676641721130404*^9, 3.67664172298987*^9}, {
+  3.6766458296508465`*^9, 3.6766458315884247`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  StyleBox[
+   RowBox[{"LinkObject", "::", "linkn"}], "MessageName"], 
+  RowBox[{
+  ":", " "}], "\<\"Argument \[NoBreak]\\!\\(\\*RowBox[{\\\"LinkObject\\\", \\\
+\"[\\\", RowBox[{\\\"\\\\\\\"\\\\\\\\\\\\\\\"J:\\\\\\\\\\\\\\\\Masterarbeit\\\
+\\\\\\\\\\\\\\Implementation\\\\\\\\\\\\\\\\InfiniTAM5\\\\\\\\\\\\\\\\x64\\\\\
+\\\\\\\\\\\\Debug\\\\\\\\\\\\\\\\InfiniTAM5.exe\\\\\\\\\\\\\\\"\\\\\\\"\\\", \
+\\\",\\\", \\\"707\\\", \\\",\\\", \\\"4\\\"}], \\\"]\\\"}]\\)\[NoBreak] in \
+\[NoBreak]\\!\\(\\*RowBox[{\\\"LinkClose\\\", \\\"[\\\", \
+RowBox[{\\\"LinkObject\\\", \\\"[\\\", RowBox[{\\\"\\\\\\\"\\\\\\\\\\\\\\\"J:\
+\\\\\\\\\\\\\\\\Masterarbeit\\\\\\\\\\\\\\\\Implementation\\\\\\\\\\\\\\\\\
+InfiniTAM5\\\\\\\\\\\\\\\\x64\\\\\\\\\\\\\\\\Debug\\\\\\\\\\\\\\\\InfiniTAM5.\
+exe\\\\\\\\\\\\\\\"\\\\\\\"\\\", \\\",\\\", \\\"707\\\", \\\",\\\", \
+\\\"4\\\"}], \\\"]\\\"}], \\\"]\\\"}]\\)\[NoBreak] has an invalid LinkObject \
+number; the link may be closed. \\!\\(\\*ButtonBox[\\\"\[RightSkeleton]\\\", \
+ButtonStyle->\\\"Link\\\", ButtonFrame->None, \
+ButtonData:>\\\"paclet:ref/message/LinkObject/linkn\\\", ButtonNote -> \
+\\\"LinkObject::linkn\\\"]\\)\"\>"}]], "Message", "MSG",
+ CellChangeTimes->{3.6766481110399027`*^9}],
+
+Cell[BoxData["\<\"\\\"J:\\\\Masterarbeit\\\\Implementation\\\\InfiniTAM5\\\\\
+x64\\\\Debug\\\\InfiniTAM5.exe\\\"\"\>"], "Output",
+ CellChangeTimes->{3.6766419386998835`*^9, 3.6766458269163375`*^9, 
+  3.6766476656005297`*^9, 3.6766481110399027`*^9}]
+}, Open  ]],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetDirectory", "@", 
+   RowBox[{"NotebookDirectory", "[", "]"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"<<", "InfiniTAM`"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"<<", "ScenePreviewCommon`"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{
+  "SetDirectory", "[", 
+   "\"\<J:\\\\Masterarbeit\\\\Data\\\\Scenes\\\\VsfsScenes\>\"", "]"}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"<<", "parameters.m"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{
+  "SetDirectory", "[", 
+   "\"\<J:\\\\Masterarbeit\\\\Data\\\\Scenes\\\\VsfsScenes\\\\relief-ps\>\"", 
+   "]"}], ";"}]}], "Input",
+ CellChangeTimes->{
+  3.6766406649594564`*^9, {3.6766481132119093`*^9, 3.6766481133056493`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"(*", 
+   RowBox[{"vsfs", " ", "calibration"}], "*)"}], "\[IndentingNewLine]", 
+  RowBox[{
+   RowBox[{
+    RowBox[{"$camera", "=", 
+     RowBox[{"CreateRGBDCamera", "[", "\[IndentingNewLine]", 
+      RowBox[{
+       RowBox[{"IdentityMatrix", "@", "4"}], 
+       RowBox[{"(*", 
+        RowBox[{"initial", " ", "pose"}], "*)"}], "\[IndentingNewLine]", ",", 
+       "$intrinsicsRgb", "\[IndentingNewLine]", ",", "$intrinsicsD", 
+       "\[IndentingNewLine]", ",", "$rgbToDepth"}], "]"}]}], ";"}], 
+   "\[IndentingNewLine]", "\[IndentingNewLine]", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"getView", "[", 
+      RowBox[{"i_Integer", ",", "camera_"}], "]"}], ":=", 
+     RowBox[{"Module", "[", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"c", ",", "d"}], "}"}], ",", "\[IndentingNewLine]", 
+       RowBox[{"CreateRGBDView", "[", 
+        RowBox[{
+         RowBox[{"Sequence", "@@", 
+          RowBox[{"getColorAndDepth", "@", "i"}]}], ",", "camera"}], "]"}]}], 
+      "\[IndentingNewLine]", "]"}]}], ";"}], "\[IndentingNewLine]", 
+   RowBox[{
+    RowBox[{"$scene", "=", 
+     RowBox[{"CreateScene", "[", "0.005", "]"}]}], ";"}], 
+   "\[IndentingNewLine]", "\[IndentingNewLine]", 
+   RowBox[{"(*", "*)"}], "\[IndentingNewLine]", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"integrateFrame", "[", 
+      RowBox[{"i_Integer", ",", "currentCamera_"}], "]"}], ":=", 
+     RowBox[{"(", "\[IndentingNewLine]", 
+      RowBox[{
+       RowBox[{"Print", "@", 
+        RowBox[{"getView", "[", 
+         RowBox[{"i", ",", "currentCamera"}], "]"}]}], "\[IndentingNewLine]", 
+       ";", 
+       RowBox[{"ProcessFrameTracking", "[", 
+        RowBox[{"$scene", ",", 
+         RowBox[{"getView", "[", 
+          RowBox[{"i", ",", "currentCamera"}], "]"}]}], "]"}]}], 
+      "\[IndentingNewLine]", ")"}]}], ";"}], 
+   "\[IndentingNewLine]"}]}]], "Input",
+ CellChangeTimes->{{3.6766386110850058`*^9, 3.676638971285838*^9}, {
+   3.6766398920314555`*^9, 3.6766399297879353`*^9}, {3.6766406379755487`*^9, 
+   3.676640658751563*^9}, {3.6766408697718573`*^9, 3.676640963271695*^9}, {
+   3.6766414346000004`*^9, 3.676641436851265*^9}, {3.676641508854596*^9, 
+   3.676641616662649*^9}, {3.6766417739330387`*^9, 3.676641787225625*^9}, {
+   3.676645889842622*^9, 3.6766459128344164`*^9}, {3.676647643498168*^9, 
+   3.676647653312624*^9}, 3.6766482960540066`*^9, {3.6766488214821978`*^9, 
+   3.6766488405138264`*^9}, {3.676648879029601*^9, 3.676648881837079*^9}, {
+   3.6766489255559483`*^9, 3.6766489360247765`*^9}, {3.676648976634186*^9, 
+   3.6766489869935303`*^9}, 3.6766490662649946`*^9, {3.676655488879611*^9, 
+   3.6766555010983505`*^9}, {3.676655746736909*^9, 3.6766557489767947`*^9}, 
+   3.676656485696395*^9}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ProcessFrameAt", 
+   RowBox[{"(*", "Tracking", "*)"}], "[", 
+   RowBox[{"$scene", ",", 
+    RowBox[{"getView", "[", 
+     RowBox[{"0", ",", "$camera"}], "]"}]}], "]"}], 
+  "\[IndentingNewLine]"}]], "Input"],
+
+Cell[BoxData[
+ RowBox[{"MeshScene", "[", 
+  RowBox[{"$scene", ",", "\"\<temp\>\""}], "]"}]], "Input"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"integrateFrame", "[", 
+   RowBox[{"0", ",", "$camera"}], "]"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{"Print", "[", 
+  RowBox[{"(*", 
+   RowBox[{"$camera", "="}], "*)"}], "]"}]}], "Input"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"v2vAfter0", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"0.8488629460334778`", ",", 
+       RowBox[{"-", "0.29049867391586304`"}], ",", "0.4416355788707733`", ",", 
+       RowBox[{"-", "0.14486201107501984`"}]}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"0.4416355788707733`", ",", "0.8488629460334778`", ",", 
+       RowBox[{"-", "0.2904985249042511`"}], ",", 
+       RowBox[{"-", "0.14486192166805267`"}]}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"-", "0.29049867391586304`"}], ",", "0.44163545966148376`", 
+       ",", "0.8488629460334778`", ",", 
+       RowBox[{"-", "0.14486195147037506`"}]}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"0.`", ",", "0.`", ",", "0.`", ",", "0.9999997615814209`"}], 
+      "}"}]}], "}"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{"$camera", "=", 
+  RowBox[{"CreateRGBDCamera", "[", 
+   RowBox[{
+   "v2vAfter0", ",", "$intrinsicsRgb", ",", "$intrinsicsD", ",", 
+    "$rgbToDepth"}], "]"}]}]}], "Input",
+ CellChangeTimes->{{3.676647968648237*^9, 3.67664797776186*^9}, 
+   3.6766484533342934`*^9, {3.6766571996972723`*^9, 3.6766571998066397`*^9}}],
+
+Cell[BoxData[
+ RowBox[{"RGBDCamera", "[", 
+  RowBox[{"\[LeftAssociation]", 
+   RowBox[{
+    RowBox[{"\<\"poseWorldToView\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"0.8488629460334778`", ",", 
+         RowBox[{"-", "0.29049867391586304`"}], ",", "0.4416355788707733`", 
+         ",", 
+         RowBox[{"-", "0.14486201107501984`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0.4416355788707733`", ",", "0.8488629460334778`", ",", 
+         RowBox[{"-", "0.2904985249042511`"}], ",", 
+         RowBox[{"-", "0.14486192166805267`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{"-", "0.29049867391586304`"}], ",", "0.44163545966148376`", 
+         ",", "0.8488629460334778`", ",", 
+         RowBox[{"-", "0.14486195147037506`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0.`", ",", "0.`", ",", "0.`", ",", "0.9999997615814209`"}], 
+        "}"}]}], "}"}]}], ",", 
+    RowBox[{"\<\"intrinsicsRgb\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+      "1148.11`", ",", "1224.65`", ",", "640", ",", "512", ",", "1280", ",", 
+       "1024"}], "}"}]}], ",", 
+    RowBox[{"\<\"intrinsicsD\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+      "574.053`", ",", "574.053`", ",", "320", ",", "240", ",", "640", ",", 
+       "480"}], "}"}]}], ",", 
+    RowBox[{"\<\"rgbToDepth\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"1", ",", "0", ",", "0", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "1", ",", "0", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "0", ",", "1", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "0", ",", "0", ",", "1"}], "}"}]}], "}"}]}]}], 
+   "\[RightAssociation]"}], "]"}]], "Output",
+ CellChangeTimes->{3.6766572010366735`*^9}]
+}, Open  ]],
+
+Cell[BoxData["$camera"], "Input"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"{", "0.", "}"}], "/.", " ", 
+  RowBox[{"0.", "\[Rule]", 
+   RowBox[{"-", "1."}]}]}]], "Input",
+ CellChangeTimes->{{3.6766571489159365`*^9, 3.6766571676065645`*^9}}],
+
+Cell[BoxData[
+ RowBox[{"{", 
+  RowBox[{"-", "1.`"}], "}"}]], "Output",
+ CellChangeTimes->{
+  3.676648247275261*^9, {3.676657165747223*^9, 3.676657168850365*^9}}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[""], "Input",
+ CellChangeTimes->{{3.6766482515074897`*^9, 3.676648300283267*^9}, 
+   3.6766571987253637`*^9}],
+
+Cell[BoxData[
+ RowBox[{"RGBDCamera", "[", 
+  RowBox[{"\[LeftAssociation]", 
+   RowBox[{
+    RowBox[{"\<\"poseWorldToView\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"0.8488629460334778`", ",", 
+         RowBox[{"-", "0.29049867391586304`"}], ",", "0.4416355788707733`", 
+         ",", 
+         RowBox[{"-", "0.14486201107501984`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0.4416355788707733`", ",", "0.8488629460334778`", ",", 
+         RowBox[{"-", "0.2904985249042511`"}], ",", 
+         RowBox[{"-", "0.14486192166805267`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{"-", "0.29049867391586304`"}], ",", "0.44163545966148376`", 
+         ",", "0.8488629460334778`", ",", 
+         RowBox[{"-", "0.14486195147037506`"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0.`", ",", "0.`", ",", "0.`", ",", "0.9999997615814209`"}], 
+        "}"}]}], "}"}]}], ",", 
+    RowBox[{"\<\"intrinsicsRgb\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+      "1148.11`", ",", "1224.65`", ",", "640", ",", "512", ",", "1280", ",", 
+       "1024"}], "}"}]}], ",", 
+    RowBox[{"\<\"intrinsicsD\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+      "574.053`", ",", "574.053`", ",", "320", ",", "240", ",", "640", ",", 
+       "480"}], "}"}]}], ",", 
+    RowBox[{"\<\"rgbToDepth\"\>", "\[Rule]", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"1", ",", "0", ",", "0", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "1", ",", "0", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "0", ",", "1", ",", "0"}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"0", ",", "0", ",", "0", ",", "1"}], "}"}]}], "}"}]}]}], 
+   "\[RightAssociation]"}], "]"}]], "Output",
+ CellChangeTimes->{3.6766483882588687`*^9, 3.676648458102995*^9, 
+  3.6766486355867653`*^9, 3.6766556684923058`*^9, 3.67665570166428*^9, 
+  3.67665576222991*^9, 3.6766562548836575`*^9}]
+}, Open  ]],
+
+Cell[BoxData[""], "Input",
+ CellChangeTimes->{{3.6766486471334333`*^9, 3.6766486666140695`*^9}, {
+   3.6766487280086374`*^9, 3.6766487554920845`*^9}, {3.6766546142441883`*^9, 
+   3.6766546144004755`*^9}, 3.676656492712051*^9}],
+
+Cell[BoxData[
+ RowBox[{"\[IndentingNewLine]", 
+  RowBox[{
+   RowBox[{
+    RowBox[{
+     RowBox[{"ProcessFrameTracking", "[", 
+      RowBox[{
+       RowBox[{"s", ":", 
+        RowBox[{"Scene", "[", "_Integer", "]"}]}], ",", 
+       RowBox[{"rgbdView", ":", 
+        RowBox[{"NamelessRGBDViewPattern", "[", "]"}]}]}], "]"}], ":=", 
+     RowBox[{"(", 
+      RowBox[{
+       RowBox[{"Print", "@", "\"\<ok\>\""}], ";", 
+       RowBox[{"InfiniTAM`Private`ProcessFrame", "[", 
+        RowBox[{"1", ",", "s", ",", "rgbdView"}], "]"}]}], ")"}]}], ";"}], 
+   "\[IndentingNewLine]", "\[IndentingNewLine]", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{
+      "raycastResult", ",", "lastFrameICPMapImage", ",", 
+       "lastFrameICPMapNormalImage"}], "}"}], "=", 
+     RowBox[{"ProcessFrameTracking", "[", 
+      RowBox[{"$scene", ",", 
+       RowBox[{"getView", "[", 
+        RowBox[{"1", ",", "$camera"}], "]"}]}], "]"}]}], ";"}]}]}]], "Input",
+ CellChangeTimes->{
+  3.6766459040738707`*^9, {3.6766483152092695`*^9, 3.6766483423496647`*^9}, {
+   3.676648610493888*^9, 3.676648622511602*^9}, {3.676655648286056*^9, 
+   3.676655655029834*^9}, {3.6766557366193533`*^9, 3.6766557449174166`*^9}, {
+   3.676655775307832*^9, 3.6766557808112354`*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"Dimensions", "@", "raycastResult"}]], "Input",
+ CellChangeTimes->{{3.67665578743781*^9, 3.6766557892893686`*^9}}],
+
+Cell[BoxData[
+ RowBox[{"{", 
+  RowBox[{"480", ",", "640", ",", "4"}], "}"}]], "Output",
+ CellChangeTimes->{3.676655789733122*^9}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"rr", "=", 
+   RowBox[{"Map", "[", 
+    RowBox[{"Most", ",", "raycastResult", ",", 
+     RowBox[{"{", "2", "}"}]}], "]"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{"Dimensions", "@", "rr"}]}], "Input",
+ CellChangeTimes->{{3.6766557974331064`*^9, 3.676655823955038*^9}}],
+
+Cell[BoxData[
+ RowBox[{"{", 
+  RowBox[{"480", ",", "640", ",", "3"}], "}"}]], "Output",
+ CellChangeTimes->{{3.676655806430194*^9, 3.676655824289378*^9}}]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1535, 2023},
+WindowMargins->{{Automatic, 239}, {Automatic, 0}},
+FrontEndVersion->"10.4 for Microsoft Windows (64-bit) (April 11, 2016)",
+StyleDefinitions->"Default.nb"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[580, 22, 111, 1, 138, "Chapter"],
+Cell[694, 25, 98, 1, 65, "Text"],
+Cell[795, 28, 98, 1, 94, "Input"],
+Cell[CellGroupData[{
+Cell[918, 33, 174, 3, 94, "Input"],
+Cell[1095, 38, 1242, 20, 200, "Message"],
+Cell[2340, 60, 248, 3, 93, "Output"]
+}, Open  ]],
+Cell[2603, 66, 763, 21, 305, "Input"],
+Cell[3369, 89, 2721, 60, 809, "Input"],
+Cell[6093, 151, 241, 7, 137, "Input"],
+Cell[6337, 160, 101, 2, 94, "Input"],
+Cell[6441, 164, 226, 6, 109, "Input"],
+Cell[CellGroupData[{
+Cell[6692, 174, 1174, 27, 347, "Input"],
+Cell[7869, 203, 1864, 46, 294, "Output"]
+}, Open  ]],
+Cell[9748, 252, 33, 0, 94, "Input"],
+Cell[CellGroupData[{
+Cell[9806, 256, 199, 5, 94, "Input"],
+Cell[10008, 263, 161, 4, 93, "Output"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[10206, 272, 122, 2, 66, "Input"],
+Cell[10331, 276, 2006, 48, 294, "Output"]
+}, Open  ]],
+Cell[12352, 327, 226, 3, 66, "Input"],
+Cell[12581, 332, 1246, 31, 305, "Input"],
+Cell[CellGroupData[{
+Cell[13852, 367, 137, 2, 94, "Input"],
+Cell[13992, 371, 129, 3, 93, "Output"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[14158, 379, 305, 7, 137, "Input"],
+Cell[14466, 388, 153, 3, 93, "Output"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+

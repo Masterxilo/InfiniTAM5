@@ -16,7 +16,14 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
+.idea/*
+x64/*
+data/*
+*.sln
+*.user
+*.suo
+*.sdf
+*.pdb
 # =========================
 # Operating System Files
 # =========================
