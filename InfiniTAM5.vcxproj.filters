@@ -18,11 +18,11 @@
     <CudaCompile Include="main.cu" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="WSTPTemplateFile.tm" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="WSTPMain.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="WSTPTemplateFile.tm" />
   </ItemGroup>
 </Project>

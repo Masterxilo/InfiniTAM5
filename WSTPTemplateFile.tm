@@ -1,5 +1,6 @@
-:Evaluate: BeginPackage["InfiniTAM`", {"numerics`"}] (* need to state everything but System` that I need *)
-:Evaluate: Begin@"`Private`" (* create everythin in InfiniTAM`Private`* *)
+:Evaluate: $oldContextPath = $ContextPath; $ContextPath = {"System`", "Global`"}; (* these are the only dependencies *)
+:Evaluate: Begin@"InfiniTAM`Private`" (* create everythin in InfiniTAM`Private`* *)
+:Evaluate: ClearAll@"InfiniTAM`Private`*" (* create everythin in InfiniTAM`Private`* *)
 
 :Begin:
 :Function:       createScene
@@ -87,7 +88,7 @@
         sceneId_Integer, 
         shader_String,
         (* Manual *)
-        poseWorldToView_?poseMatrixQ,
+        poseWorldToView_?PoseMatrixQ,
         rgbIntrinsics : NamelessIntrinsicsPattern[]
     ]
 
@@ -103,10 +104,10 @@
     (* Manual *)
     , rgbaByteImage_ /;TensorQ[rgbaByteImage, IntegerQ] && Last@Dimensions@rgbaByteImage == 4
     , depthData_?NumericMatrixQ
-    , poseWorldToView_?poseMatrixQ
+    , poseWorldToView_?PoseMatrixQ
     , intrinsicsRgb : NamelessIntrinsicsPattern[]
     , intrinsicsD : NamelessIntrinsicsPattern[]
-    , rgbToDepth_?poseMatrixQ
+    , rgbToDepth_?PoseMatrixQ
     ]
 :Arguments:      { doTracking, sceneId, rgbaByteImage, depthData, poseWorldToView, intrinsicsRgb, intrinsicsD, rgbToDepth }
 :ArgumentTypes:  { Integer, Integer, Manual }
@@ -131,5 +132,6 @@
 :End:
 
 
+:Evaluate: Protect@"InfiniTAM`Private`*"
 :Evaluate: End[] 
-:Evaluate: EndPackage[]
+:Evaluate: $ContextPath = $oldContextPath

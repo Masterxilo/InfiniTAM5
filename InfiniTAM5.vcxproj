@@ -100,7 +100,7 @@
       <CodeGeneration>compute_50,sm_50</CodeGeneration>
     </CudaCompile>
     <PreBuildEvent>
-      <Command>trykill $(TargetFileName) &amp;&amp; wsprep WSTPTemplateFile.tm &gt; WSTPMain.c</Command>
+      <Command>wsprep WSTPTemplateFile.tm &gt; WSTPMain.c &amp;&amp; trykill $(TargetFileName) </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -135,7 +135,7 @@
       <CodeGeneration>compute_50,sm_50</CodeGeneration>
     </CudaCompile>
     <PreBuildEvent>
-      <Command>trykill $(TargetFileName) &amp;&amp; wsprep WSTPTemplateFile.tm &gt; WSTPMain.c</Command>
+      <Command>wsprep WSTPTemplateFile.tm &gt; WSTPMain.c &amp;&amp; trykill $(TargetFileName) </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -148,12 +148,12 @@
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="WSTPMain.c" />
-  </ItemGroup>
-  <ItemGroup>
     <Text Include="WSTPTemplateFile.tm">
       <FileType>Document</FileType>
     </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="WSTPMain.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

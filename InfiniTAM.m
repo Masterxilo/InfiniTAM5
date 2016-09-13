@@ -1,3 +1,5 @@
+(* ::Package:: *)
+
 (* Mathematica Package *)
 (* Created by Mathematica Plugin for IntelliJ IDEA *)
 
@@ -40,7 +42,7 @@ Begin["`Private`"]
 
 ClearAll@@exports;
 
-poseMatrixQ[x_] := NumericMatrixQ[x, {4, 4}];
+
 IntrinsicsPattern[] := {fx_?NumericQ, fy_?NumericQ, cx_?NumericQ, cy_?NumericQ, w_Integer, h_Integer};
 NamelessIntrinsicsPattern[] := {_?NumericQ, _?NumericQ, _?NumericQ, _?NumericQ, _Integer, _Integer};
 

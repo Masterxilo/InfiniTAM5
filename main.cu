@@ -1,11 +1,18 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+﻿/*
+InfiniTAM essentials/modified in a single file
+
+Paul Frischknecht
+
+except for (TODO: OPTIONAL DEPENDENCE) paulwl.h (and dependence on wsprep), this is self-contained
+
+*/
+
+// Standard/system headers
+#define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
 #define WINDOWS_LEAN_AND_MEAN
 #include <windows.h>
 
-#define WL_WSTP_MAIN
-#define WL_ALLOC_CONSOLE
-#include <paulwl.h>
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -37,10 +44,14 @@ typedef unsigned int uint;
 #include <exception>
 #include <iterator>
 #include <memory>
-
-#define OSTREAM(CLASSNAME) friend std::ostream& operator<<(std::ostream& os, const CLASSNAME& o)
-
 using namespace std;
+
+// Custom headers
+#define WL_WSTP_MAIN
+#define WL_ALLOC_CONSOLE
+#include <paulwl.h>
+
+
 
 #pragma warning(push, 4)
 
@@ -57,17 +68,24 @@ using namespace std;
 #endif
 
 #ifdef __CUDA_ARCH__
-#define GPU_CODE 1
-#define CPU_AND_GPU_CONSTANT __constant__
+#define GPU_CODE                1
+#define CPU_AND_GPU_CONSTANT    __constant__
 #else
-#define GPU_CODE 0
+#define GPU_CODE                0
 #define CPU_AND_GPU_CONSTANT
 #endif
 
-#define GPU_ONLY __device__
-#define DEVICEPTR(mem) mem
+#define GPU_ONLY                __device__
 
-#define KERNEL __global__ void
+// Declares a pointer to device-only memory.
+// Used instead of the h_ d_ convention for naming pointers
+#define DEVICEPTR(mem)          mem
+
+// Declares a pointer to device-only memory which is __shared__ among the threads of the current block
+#define SHAREDPTR(mem)          mem
+
+#define KERNEL                  __global__ void
+
 #if defined(__CUDACC__) && defined(__CUDA_ARCH__)
 #define CPU_AND_GPU __device__
 #else
@@ -84,6 +102,8 @@ using namespace std;
 
 
 
+// Declaration of ostream << CLASSNAME operator
+#define OSTREAM(CLASSNAME) friend std::ostream& operator<<(std::ostream& os, const CLASSNAME& o)
 
 
 
@@ -91,9 +111,30 @@ using namespace std;
 
 
 
+
+
+
+
+
+
+// Sequence@@p
 #define xyz(p) p.x, p.y, p.z
 #define comp012(p) p[0], p[1], p[2]
 #define xy(p) p.x, p.y
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Linearize xyz coordinate of thread into 3 arguments
 #define threadIdx_xyz xyz(threadIdx)
 
 
@@ -137,12 +178,12 @@ using namespace std;
 /// Whether a failed assertion triggers a debugger break.
 __managed__ bool breakOnAssertion = true;
 
-/// Whenever an assertions fails std::exception is thrown.
+/// Whether when an assertions fails std::exception should be thrown.
 /// No effect in GPU code. Used for BEGIN_SHOULD_FAIL tests only.
 __managed__ bool assertionThrowException = false;
 
-/// Must be reset manually 
-/// Assert that it was reset since the last failed assertion.
+/// Used to track assertion failures on GPU in particular.
+/// Must be reset manually (*_SHOULD_FAIL reset it).
 __managed__ bool assertionFailed = false;
 
 #pragma warning(disable : 4003) // assert does not need "commentFormat" and its arguments
@@ -153,12 +194,14 @@ __managed__ bool assertionFailed = false;
 #define assert(x,commentFormat,...) {if(!(x)) {char s[10000]; sprintf_s(s, "%s(%i) : Assertion failed : %s.\n\t<" commentFormat ">\n", __FILE__, __LINE__, #x, __VA_ARGS__); if (!assertionThrowException) {puts(s);MessageBoxA(0,s,"Assertion failed",0);OutputDebugStringA(s);} /*flushStd();*/ assertionFailed = true; if (breakOnAssertion) DebugBreak();  if (assertionThrowException) throw std::exception(s); }}
 #endif
 
-
-// Can only be used together with END_SHOULD_FAIL in the same block
-// TODO support SEH via __try, __except (division by 0, null pointer access)
+/// BEGIN_SHOULD_FAIL starts a block of code that should raise an assertion error.
+/// Can only be used together with END_SHOULD_FAIL in the same block
+// TODO support SEH via __try, __except (to catch division by 0, null pointer access etc.)
 #define BEGIN_SHOULD_FAIL() {cudaDeviceSynchronize(); assert(!assertionThrowException, "BEGIN_SHOULD_FAIL blocks cannot be nested"); bool ok = false; assertionThrowException = true; breakOnAssertion = false; assert(!assertionFailed); try {
+
 #define END_SHOULD_FAIL() } catch(const std::exception& e) { /*cout << e.what();*/ } cudaDeviceSynchronize(); assertionThrowException = false; breakOnAssertion = true; if (assertionFailed) { ok = true; assertionFailed = false; } assert(ok, "expected an exception but got none"); }
 
+#define fatalError(...) {assert(false, __VA_ARGS__);}
 
 
 
@@ -188,8 +231,7 @@ __managed__ bool assertionFailed = false;
 
 
 
-
-
+// 3d to 1d coordinate conversion (think 3-digit mixed base number)
 
 CPU_AND_GPU unsigned int toLinearId(const dim3 dim, const uint3 id) {
     return dim.x * dim.y * id.z + dim.x * id.y + id.x;
@@ -215,8 +257,8 @@ GPU_ONLY uint linear_global_threadId() {
 }
 
 
-// given blockSize and total amount of tasks, compute a sufficient grid size
-// note that some blocks will not be completely occupied
+/// Given the desired blockSize (threads per block) and total amount of tasks, compute a sufficient grid size
+// Note that some blocks will not be completely occupied. You need to add manual checks in the kernels
 inline dim3 getGridSize(dim3 taskSize, dim3 blockSize)
 {
     return dim3((taskSize.x + blockSize.x - 1) / blockSize.x, (taskSize.y + blockSize.y - 1) / blockSize.y, (taskSize.z + blockSize.z - 1) / blockSize.z);
@@ -258,8 +300,8 @@ inline dim3 getGridSize(dim3 taskSize, dim3 blockSize)
 
 /** Allocate a block of CUDA memory and memset it to 0 */
 template<typename T> static void zeroMalloc(T*& p, const uint count = 1) {
-    cudaSafeCall(cudaMalloc(&p, sizeof(T) * count));
-    cudaSafeCall(cudaMemset(p, 0, sizeof(T) * count));
+    cudaMalloc(&p, sizeof(T) * count);
+    cudaMemset(p, 0, sizeof(T) * count);
 }
 
 
@@ -283,7 +325,7 @@ template<typename T> static void zeroMalloc(T*& p, const uint count = 1) {
 
 
 
-
+// Simple mathematical functions
 
 template<typename T>
 inline T CPU_AND_GPU ROUND(T x) {
@@ -321,7 +363,7 @@ inline T CPU_AND_GPU CLAMP(T x, T a, T b) {
 
 
 
-
+// Kernel launch and error reporting
 
 dim3 _lastLaunch_gridDim, _lastLaunch_blockDim;
 #ifndef __CUDACC__
@@ -386,12 +428,13 @@ cudaSafeCall(cudaGetLastError());\
 
 
 
-
-/// Classes extending this must be head allocated
+/// Extend this class to declar objects whose memory lies in CUDA managed memory space
+/// which is accessible from CPU and GPU.
+/// Classes extending this must be heap-allocated
 struct Managed {
     void *operator new(size_t len){
         void *ptr;
-        cudaMallocManaged(&ptr, len); // did some earlier kernel throw an assert?
+        cudaMallocManaged(&ptr, len); // if cudaSafeCall fails here check the following: did some earlier kernel throw an assert?
         cudaDeviceSynchronize();
         return ptr;
     }
@@ -438,10 +481,16 @@ struct Managed {
 
 
 
-
-
-/// ! Must be run by a single warp (32 threads) simultaneously.
-inline __device__ void warpReduce(volatile float* sdata, int tid) {
+/// Sums up 64 floats
+/// c.f. "Optimizing Parallel Reduction in CUDA" https://docs.nvidia.com/cuda/samples/6_Advanced/reduction/doc/reduction.pdf
+///
+/// sdata[0] will contain the sum 
+///
+/// tid up to tid+32 must be a valid indices into sdata 
+/// tid should be 0 to 31
+/// ! Must be run by all threads of a single warp (the 32 first threads of a block) simultaneously.
+/// sdata must point to __shared__ memory
+inline __device__ void warpReduce(volatile SHAREDPTR(float*) sdata, int tid) {
     // Ignore the fact that we compute some unnecessary sums.
     sdata[tid] += sdata[tid + 32];
     sdata[tid] += sdata[tid + 16];
@@ -451,14 +500,15 @@ inline __device__ void warpReduce(volatile float* sdata, int tid) {
     sdata[tid] += sdata[tid + 1];
 }
 
-
+/// Sums up 256 floats
+/// and atomicAdd's the final sum to a float or int in global memory
 template<typename T //!< int or float
 >
 inline __device__ void warpReduce256(
 float localValue,
-volatile float* dim_shared1,
+volatile SHAREDPTR(float*) dim_shared1,
 int locId_local,
-T* outTotal) {
+DEVICEPTR(T*) outTotal) {
     dim_shared1[locId_local] = localValue;
     __syncthreads();
 
@@ -525,7 +575,7 @@ T* outTotal) {
 
 
 
-// Serialization
+// Serialization infrastructure
 
 template<typename T>
 void binwrite(ofstream& f, const T* const x) {
@@ -550,7 +600,7 @@ void binread(ifstream& f, T* const x) {
 #define SERIALIZE_WRITE_VERSION(file) bin(file, serialize_version);
 #define SERIALIZE_READ_VERSION(file) {const int sv = bin<int>(file); \
 assert(sv == serialize_version\
-, "Serialized version in file '%d' does not match expected version '%d'"\
+, "Serialized version in file, '%d', does not match expected version '%d'"\
 , sv, serialize_version);}
 
 template<typename T>
@@ -618,8 +668,9 @@ ifstream binopen_read(string fn) {
 
 
 
-
-// CANNOT USE std::vector (not yet initialized?)
+// Testing framework
+// Note: CANNOT USE std::vector to track all listed tests (not yet initialized?)
+// this ad-hoc implementation works
 const int max_tests = 10000;
 int _ntests = 0;
 typedef void(*Test)(void);
@@ -688,10 +739,10 @@ void runTests() {
 
 
 
+// cudaSafeCall wrapper
 
 
-
-
+// Implementation detail:
 // cudaSafeCall is an expression that evaluates to 
 // 0 when err is cudaSuccess (0), such that cudaSafeCall(cudaSafeCall(cudaSuccess)) will not block
 // this is important because we might have legacy code that explicitly does 
@@ -706,11 +757,11 @@ bool cudaSafeCallImpl(cudaError err, const char * const expr, const char * const
 // The final expression will be 0.
 // Otherwise we evaluate debug break, which returns true as well and then return 0.
 #define cudaSafeCall(err) \
-    !(cudaSafeCallImpl((cudaError)(err), #err, __FILE__, __LINE__) || ([]() {assert(false, "CUDA error in cudaSafeCall"); return true;})() )
+    !(cudaSafeCallImpl((cudaError)(err), #err, __FILE__, __LINE__) || ([]() {fatalError("CUDA error in cudaSafeCall"); return true;})() )
 
 
 
-// Automatically wrap some functions in cudaSafeCall
+// Automatically wrap some common cuda functions in cudaSafeCall
 #ifdef __CUDACC__ // hack to hide these from intellisense
 #define cudaDeviceSynchronize(...) cudaSafeCall(cudaDeviceSynchronize(__VA_ARGS__))
 #define cudaMalloc(...) cudaSafeCall(cudaMalloc(__VA_ARGS__))
@@ -797,7 +848,7 @@ KERNEL trueTestKernel() {
 }
 
 KERNEL failTestKernel() {
-    assert(false, "this should fail on the GPU");
+    fatalError("this should fail on the GPU");
 }
 
 void sehDemo() {
@@ -805,7 +856,7 @@ void sehDemo() {
     __try {
         int x = 5; x /= 0;
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
+    __except (EXCEPTION_EXECUTE_HANDLER) { //< could use GetExceptionCode, GetExceptionInformation here
     }
 }
 
@@ -815,17 +866,18 @@ TEST(trueTest) {
     LAUNCH_KERNEL(trueTestKernel, 1, 1);
 
     BEGIN_SHOULD_FAIL();
-    assert(false, "this should fail on the CPU");
+    fatalError("this should fail on the CPU");
     END_SHOULD_FAIL();
 
     // cannot have the GPU assertion-fail, because this resets the device
-    // TODO work around, just exit from the kernel on assertion failure instead of illegal instruction,
+    // TODO work around, just *exit* (return -- or exit instruction?) from the kernel on assertion failure instead of illegal instruction,
     // at least if no debugger present
     /*
     BEGIN_SHOULD_FAIL();
     LAUNCH_KERNEL(failTestKernel, 1, 1);
     END_SHOULD_FAIL();
     */
+
     sehDemo();
 }
 
@@ -842,8 +894,8 @@ TEST(trueTest) {
 
 
 
-
-
+// 2 to 4 & X dimensional linear algebra library
+// TODO consider using this with range-checked datatypes and overflow-avoiding integers
 
 namespace vecmath {
 
@@ -2266,6 +2318,9 @@ namespace vecmath {
 #endif
         return value;
     }
+
+    // Solve Ax = b for A symmetric positive-definite
+    // Usually, A = B^TB and b = B^Ty, as present in the normal-equations for solving linear least-squares problems
     class Cholesky
     {
     private:
@@ -2675,7 +2730,7 @@ namespace vecmath {
 
         ITMPose(void);
 
-        /** This builds a Pose based on its exp representation
+        /** This builds a Pose based on its exp representation (c.f. exponential map in lie algebra, matrix exponential...)
         */
         static ITMPose exp(const Vector6f& tangent);
     };
@@ -2744,6 +2799,7 @@ namespace vecmath {
         M = pose->M;
     }
 
+    // init M from params
     void ITMPose::SetModelViewFromParams()
     {
         // w is an "Euler vector", i.e. the vector "axis of rotation (u) * theta" (axis angle representation)
@@ -2808,6 +2864,7 @@ namespace vecmath {
         M.m[3 + 4 * 0] = 0.0f; M.m[3 + 4 * 1] = 0.0f; M.m[3 + 4 * 2] = 0.0f; M.m[3 + 4 * 3] = 1.0f;
     }
 
+    // init params from M
     void ITMPose::SetParamsFromModelView()
     {
         // Compute this->params.r = resultRot;
@@ -2990,9 +3047,8 @@ namespace vecmath {
 
 
 
-
-
-
+    // Framework for building and solving (linear) least squares fitting problems on the GPU
+    // c.f. constructAndSolve.nb
 
     namespace LeastSquares {
 
@@ -3030,7 +3086,7 @@ namespace vecmath {
                 VectorX<float, m> ai; float bi;
                 if (!Constructor::generate(i, ai, bi, out._extraData)) return false;
 
-                // Construct ai_aiT, ai_bi
+                // Construct ai_aiT (an outer product matrix) and ai_bi
                 out._AtA = MatrixSQX<float, m>::make_aaT(ai);
                 out._Atb = ai * bi;
                 return true;
@@ -3180,6 +3236,16 @@ namespace vecmath {
             return transform_reduce_if<AtA_Atb_Add<Constructor>>(n, gridDim, blockDim);
         }
 
+        /// Given a Constructor with method
+        ///     static __device__ Constructor::generate(uint i, VectorX<float, m> out_ai, float& out_bi)
+        /// and static uint Constructor::m
+        /// build the equation system Ax = b with out_ai, out_bi in the i-th row/entry of A or b
+        /// Then solve this in the least-squares sense and return x.
+        ///
+        /// i goes from 0 to n-1.
+        ///
+        /// Custom scheduling can be used and any custom Constructor::ExtraData can be summed up over all i.
+        ///
         /// \see construct
         template<class Constructor>
         AtA_Atb_Add<Constructor>::Atb constructAndSolve(int n, dim3 gridDim, dim3 blockDim, Constructor::ExtraData& out_extra_sum) {
@@ -3271,6 +3337,7 @@ namespace vecmath {
         assert(n*v == Vector4f(8, 2, 0, 0));
     }
 
+    // TODO test constructAndSolve
 }
 using namespace vecmath;
 
@@ -3312,11 +3379,9 @@ divided by @ref voxelSize (times two -> on both sides of the surface).
 Also, a voxel storing the value 1 has world-space-distance mu from the surface.
 (the stored -1 to 1 SDF values are understood as fractions of mu)
 
-Must be greater than voxelSize.
-
-TODO define from voxelSize
+Must be greater than voxelSize -> defined automatically from voxelSize
 */
-#define voxelSize_to_mu(vs) (4*vs)//0.02f
+#define voxelSize_to_mu(vs) (4*vs)// TODO is this heuristic ok?
 #define mu voxelSize_to_mu(voxelSize)//0.02f
 
 /**
@@ -3325,7 +3390,7 @@ Must be smaller than mu and should be bigger than voxelSize
 
 In world space coordinates (meters).
 */
-#define t_shell (mu/2.f)
+#define t_shell (mu/2.f)// TODO is this heuristic ok?
 
 
 /// In world space coordinates.
@@ -3334,8 +3399,8 @@ In world space coordinates (meters).
 
 
 
-/// (0,0,0) is the lower corner of the first voxel block, (1,1,1) its upper corner,
-/// a position corresponding to (voxelBlockSize, voxelBlockSize, voxelBlockSize) in world coordinates.
+/// (0,0,0) is the lower corner of the first voxel *block*, (1,1,1) its upper corner,
+/// voxelBlockCoordinate (1,1,1) corresponds to (voxelBlockSize, voxelBlockSize, voxelBlockSize) in world coordinates.
 #define voxelBlockCoordinates (Scene::getCurrentScene()->voxelBlockCoordinates_)
 
 /// (0,0,0) is the lower corner of the voxel, (1,1,1) its upper corner,
@@ -3367,7 +3432,7 @@ In world space coordinates (meters).
 
 
 
-/// depth threashold for the  tracker
+/// depth threshold for the  tracker
 /// For ITMDepthTracker: ICP distance threshold for lowest resolution (later iterations use lower distances)
 /// In world space squared -- TODO maybe define heuristically from voxelsize/mus
 #define depthTrackerICPMaxThreshold (0.1f * 0.1f)
@@ -3391,6 +3456,7 @@ to a distance of @p viewFrustum_max (world-space distance). Usually the
 actual depth range should be determined
 automatically by a ITMLib::Engine::ITMVisualisationEngine.
 
+aka.
 viewRange_min depthRange
 zmin zmax
 */
@@ -3405,7 +3471,7 @@ zmin zmax
 #define SDF_BLOCK_SIZE3 (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE)
 
 // (Maximum) Number of actually stored blocks (i.e. maximum load the hash-table can actually have -- yes, we can never fill all buckets)
-// is smaller than SDF_BUCKET_NUM for efficiency reasons. 
+// is much smaller than SDF_BUCKET_NUM for efficiency reasons. 
 // doesn't make sense for this to be bigger than SDF_GLOBAL_BLOCK_NUM
 // localVBA's size
 // memory hog if too large, main limitation for scene size
@@ -3415,6 +3481,7 @@ zmin zmax
 #define SDF_HASH_MASK (SDF_BUCKET_NUM-1)// Used for get hashing value of the bucket index, "x & (uint)SDF_HASH_MASK" is the same as "x % SDF_BUCKET_NUM"
 #define SDF_EXCESS_LIST_SIZE 0x20000	// Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
+// TODO rename to SDF_TOTAL_HASH_POSITIONS
 #define SDF_GLOBAL_BLOCK_NUM (SDF_BUCKET_NUM+SDF_EXCESS_LIST_SIZE)	// Number of globally stored blocks == size of ordered + unordered part of hash table
 
 
@@ -3447,9 +3514,7 @@ zmin zmax
 
 
 
-
-
-
+// Memory-block and 'image'/large-matrix management
 namespace memory {
 
     enum MemoryCopyDirection { CPU_TO_CPU, CPU_TO_CUDA, CUDA_TO_CPU, CUDA_TO_CUDA };
@@ -3457,6 +3522,7 @@ namespace memory {
     enum MemoryBlockState { SYNCHRONIZED, CPU_AHEAD, GPU_AHEAD };
 
     void testMemblock();
+
     /// Pointer to block of mutable memory, consistent in GPU and CPU memory.
     /// 
     /*
@@ -3610,7 +3676,7 @@ namespace memory {
                 state = GPU_AHEAD;
                 return data_cuda;
             }
-            assert(false, "error on GetData: unknown memory type %d", memoryType);
+            fatalError("error on GetData: unknown memory type %d", memoryType);
             return 0;
         }
 
@@ -3630,7 +3696,7 @@ namespace memory {
                 assert(state == SYNCHRONIZED);
                 return data_cuda;
             }
-            assert(false, "error on const GetData: unknown memory type %d", memoryType);
+            fatalError("error on const GetData: unknown memory type %d", memoryType);
             return 0;
         }
 
@@ -3870,9 +3936,7 @@ using namespace memory;
 
 
 
-
-
-
+// Camera calibration parameters, used to convert pixel coordinates to camera coordinates/rays
 class ITMIntrinsics
 {
 public:
@@ -3923,7 +3987,9 @@ public:
 
 /** \brief
 Represents the extrinsic calibration between RGB and depth
-cameras
+cameras, i.e. the conversion from RGB camera-coordinates to depth-camera-coordinates and back
+
+TODO use Coordinates class
 */
 class ITMExtrinsics
 {
@@ -4031,7 +4097,7 @@ inline CPU_AND_GPU bool isLegalColor(Vector4f c) {
 inline CPU_AND_GPU bool isLegalColor(Vector4u c) {
     // NOTE this should never be called -- withHoles should be false for a Vector4u
     // implementing this just calms the compiler
-    assert(false, "isLegalColor is not implemented for Vector4u");
+    fatalError("isLegalColor is not implemented for Vector4u");
     return false;
 }
 
@@ -4059,7 +4125,7 @@ inline CPU_AND_GPU bool isLegalColor(Vector4u c) {
 
 
 
-
+// Local/per pixel Image processing library
 
 
 /// Linearized pixel index
@@ -4324,7 +4390,7 @@ FILTERMETHOD(FilterSubsampleWithHoles, WITH_HOLES)
 
 
 
-
+// Pinhole-camera computations, c.f. RayImage, DepthImage in coordinates::
 
 /// Computes a position in camera space given a 2d image coordinate and a depth.
 /// \f$ z K^{-1}u\f$
@@ -4393,7 +4459,11 @@ CPU_AND_GPU inline bool projectExtraBounds(
 
 
 
-
+// Concept of a rectilinear, aribtrarily rotated and scaled coordinate system
+// we use the following rigid coordinate systems: 
+// world, camera (depth and color), voxel, voxel-block coordinates
+// all these coordinates cover the whole world and are interconvertible by homogeneous matrix multiplication
+// in these spaces, we refer to points and rays
 
 namespace coordinates {
 
@@ -4402,9 +4472,9 @@ namespace coordinates {
     class Vector;
     class Ray;
     class CoordinateSystem;
-    __managed__ CoordinateSystem* globalcs = 0;
 
-    /// Coordinate systems are identical when their pointers are.
+    /// Coordinate systems live in managed memory and are identical when their pointers are.
+    __managed__ CoordinateSystem* globalcs = 0;
     class CoordinateSystem : public Managed {
     private:
         //CoordinateSystem(const CoordinateSystem&); // TODO should we really allow copying?
@@ -4424,13 +4494,17 @@ namespace coordinates {
         /// The world or global space coodinate system.
         /// Measured in meters if cameras and depth computation are calibrated correctly.
         CPU_AND_GPU static CoordinateSystem* global() {
-#ifndef __CUDA_ARCH__
+
             if (!globalcs) {
+#if GPU_CODE
+                fatalError("Global coordinate system does not yet exist. It cannot be instantiated on the GPU. Aborting.");
+#else
                 Matrix4f m;
                 m.setIdentity();
                 globalcs = new CoordinateSystem(m);
-            }
 #endif
+            }
+
             assert(globalcs);
             return globalcs;
         }
@@ -4440,6 +4514,7 @@ namespace coordinates {
         CPU_AND_GPU Ray convert(Ray p)const;
     };
 
+    // Represents anything that lives in some coordinate system.
     // Entries are considered equal only when they have the same coordinates.
     // They are comparable only if in the same coordinate system.
     class CoordinateEntry {
@@ -4449,6 +4524,9 @@ namespace coordinates {
         CPU_AND_GPU CoordinateEntry(const CoordinateSystem* coordinateSystem) : coordinateSystem(coordinateSystem) {}
     };
 
+    // an origin-less direction in some coordinate system
+    // not affected by translations
+    // might represent a surface normal (if normalized) or the direction from one point to another
     class Vector : public CoordinateEntry {
     private:
         friend Point;
@@ -4484,7 +4562,8 @@ namespace coordinates {
         const Vector3f location;
         // copy constructor ok
 
-        // Assignment // TODO use a changing reference-to-Point instead (a pointer for example)
+        // Assignment // TODO instead of allowing assignment, rendering Points mutable (!)
+        // use a changing reference-to-a-Point instead (a pointer for example)
         CPU_AND_GPU void operator=(const Point& rhs) {
             coordinateSystem = rhs.coordinateSystem;
             const_cast<Vector3f&>(location) = rhs.location;
@@ -4500,13 +4579,17 @@ namespace coordinates {
             assert(coordinateSystem == rhs.coordinateSystem);
             return Point(coordinateSystem, location + rhs.direction);
         }
-        // points from rhs to this
+
+        /// Gives a vector that points from rhs to this.
+        /// Think 'the location of this as seen from rhs' or 'how to get to this coordinate given one already got to rhs' ('how much energy do we still need to invest in each direction)
         CPU_AND_GPU Vector operator-(const Point& rhs) const {
             assert(coordinateSystem == rhs.coordinateSystem);
             return Vector(coordinateSystem, location - rhs.location);
         }
     };
 
+    /// Oriented line segment
+    // TODO does this allow scaling or not?
     class Ray {
     public:
         const Point origin;
@@ -4570,7 +4653,8 @@ using namespace coordinates;
 
 
 
-/// Base class storing a camera calibration, eyecoordinate system and an image taken with a camera thusly calibrated.
+/// Base class storing a camera calibration, eye coordinate system and an image taken with a camera thusly calibrated.
+/// Given correct calibration and no scaling, the resulting points are in world-scale, i.e. meter units.
 template<typename T>
 class CameraImage : public Managed {
 private:
@@ -4600,18 +4684,23 @@ public:
     CPU_AND_GPU Point location() const {
         return Point(eyeCoordinates, Vector3f(0, 0, 0));
     }
+
+    /// Returns a ray starting at the camera origin and passing through the virtual camera plane
+    /// pixel coordinates must be valid with regards to image size
     CPU_AND_GPU Ray getRayThroughPixel(Vector2i pixel, float depth) const {
-        assert(pixel.x >= 0 && pixel.x < image->noDims.width);
-        assert(pixel.y >= 0 && pixel.y < image->noDims.height);
+        assert(pixel.x >= 0 && pixel.x < imgSize().width);
+        assert(pixel.y >= 0 && pixel.y < imgSize().height);
         Vector4f f = depthTo3D(projParams(), pixel.x, pixel.y, depth);
         assert(f.z == depth);
         return Ray(location(), Vector(eyeCoordinates, f.toVector3()));
     }
 #define EXTRA_BOUNDS true
     /// \see project
-    /// If Extra_bounds is specified, the point is considered to lie outside of the image
+    /// If extraBounds = EXTRA_BOUNDS is specified, the point is considered to lie outside of the image
     /// if it cannot later be interpolated (the outer bounds are shrinked by one pixel)
-    /// \returns false when point projects outside of image
+    // TODO in a 2x2 image, any point in [0,2]^2 can be given a meaningful, bilinearly interpolated color...
+    // did I maybe mean more complex derivatives, for normals?
+    /// \returns false when point projects outside of virtual image plane
     CPU_AND_GPU bool project(Point p, Vector2f& pt_image, bool extraBounds = false) const {
         Point p_ec = eyeCoordinates->convert(p);
         assert(p_ec.coordinateSystem == eyeCoordinates);
@@ -4640,16 +4729,19 @@ public:
     }
 };
 
-/// Treats a raster of locations as points in pointCoordinates.
+/// Treats a raster of locations (x,y,z,1) \in Vector4f as points specified in pointCoordinates.
+/// The data may have holes, undefined data, which must be Vector4f IllegalColor<Vector4f>::make() (0,0,0,-1 /*only w is checked*/)
 ///
 /// The assumption is that the location in image[x,y] was recorded by
 /// intersecting a ray through pixel (x,y) of this camera with something.
+/// Thus, the corresponding point lies in the extension of the ray-for-pixel, but possibly in another coordinate system.
+///
 /// The coordinate system 'pointCoordinates' does not have to be the same as eyeCoordinates, it might be 
 /// global() coordinates.
 /// getPointForPixel will return a point in pointCoordinates with .location as specified in the image.
 ///
 /// Note: This is a lot different from the depth image, where the assumption is always that the depths are 
-/// the z component in eyeCoordinates. Here, the coordinate system of the data in the image can be anything.
+/// the z component in eyeCoordinates. Here, the coordinate system of the data in the image (pointCoordinates) can be anything.
 ///
 /// We use this to store intersection points (in world coordinates) obtained by raytracing from a certain camera location.
 class PointImage : public CameraImage<Vector4f> {
@@ -4661,12 +4753,15 @@ public:
         const CoordinateSystem* const eyeCoordinates,
         const ITMIntrinsics cameraIntrinsics) :
         CameraImage(image, eyeCoordinates, cameraIntrinsics), pointCoordinates(pointCoordinates) {}
+
     const CoordinateSystem* const pointCoordinates;
 
     CPU_AND_GPU Point getPointForPixel(Vector2i pixel) const {
         return Point(pointCoordinates, sampleNearest(image->GetData(), pixel.x, pixel.y, imgSize()).toVector3());
     }
 
+    /// Uses bilinear interpolation to deduce points between raster locations.
+    /// out_isIllegal is set to true or false depending on whether the given point falls in a 'hole' (undefined/missing data) in the image
     CPU_AND_GPU Point getPointForPixelInterpolated(Vector2f pixel, bool& out_isIllegal) const {
         out_isIllegal = false;
         // TODO should this always consider holes?
@@ -4683,6 +4778,8 @@ public:
 /// Treats a raster of locations and normals as rays, specified in pointCoordinates.
 /// Pixel (x,y) is associated to the ray startin at pointImage[x,y] into the direction normalImage[x,y],
 /// where both coordinates are taken to be pointCoordinates.
+///
+/// This data is generated from intersecting rays with a surface.
 class RayImage : public PointImage {
 public:
     RayImage(
@@ -4956,6 +5053,10 @@ TEST(testCS) {
 /** \brief
 Represents a single "view", i.e. RGB and depth images along
 with all intrinsic, relative and extrinsic calibration information
+
+This defines a point-cloud with 'valid half-space-pseudonormals' for each point:
+We know that the observed points have a normal that lies in the same half-space as the direction towards the camera,
+otherwise we could not have observed them.
 */
 class ITMView : public Managed {
     /// RGB colour image.
@@ -5044,12 +5145,14 @@ void ITMView::ChangeImages(ITMUChar4Image *rgbImage, ITMFloatImage *depthImage)
 
 
 /**
-Coarsest integer grid laid over 3d space.
+Voxel block coordinates.
+
+This is the coarsest integer grid laid over our 3d space.
 
 Multiply by SDF_BLOCK_SIZE to get voxel coordinates,
 and then by ITMSceneParams::voxelSize to get world coordinates.
 
-using short to reduce storage of hash map. // TODO could use another type for accessing convenience/alignment speed
+using short (Vector3*s*) to reduce storage requirements of hash map // TODO could use another type for accessing convenience/alignment speed
 */
 typedef Vector3s VoxelBlockPos;
 // Default voxel block pos, used for debugging
@@ -5079,10 +5182,10 @@ Stores the information of a single voxel in the volume
 class ITMVoxel
 {
 private:
-    // signed distance, fixed comma 16 bit int, converted to snorm [-1, 1] range as described by OpenGL standard (?)
+    // signed distance, fixed comma 16 bit int, converted to snorm [-1, 1] range as described by OpenGL standard (?)/terminology as in DirectX11
     short sdf;  // saving storage
 public:
-    /** Value of the truncated signed distance transformation, in [-1, 1] (scaled by truncation mu when storing) */
+    /** Value of the truncated signed distance transformation, in [-1, 1] (scaled by truncation distance mu when storing) */
     CPU_AND_GPU void setSDF_initialValue() { sdf = 32767; }
     CPU_AND_GPU float getSDF() const { return (float)(sdf) / 32767.0f; }
     CPU_AND_GPU void setSDF(float x) {
@@ -5099,6 +5202,8 @@ public:
     /** Number of observations that made up @p clr. */
     uchar w_color;
 
+    // for vsfs:
+    /*
     //! unknowns of our objective
     float luminanceAlbedo; // a(v)
     //float refinedDistance; // D'(v)
@@ -5118,6 +5223,7 @@ public:
     CPU_AND_GPU Vector3f chromaticity() const {
         return clr.toFloat() / intensity();
     }
+    */
 
     // NOTE not used inially when memory is just allocated and reinterpreted, but used on each allocation
     GPU_ONLY ITMVoxel()
@@ -5128,7 +5234,7 @@ public:
         w_color = 0;
 
         // start with constant white albedo
-        luminanceAlbedo = 1.f;
+        //luminanceAlbedo = 1.f;
     }
 };
 
@@ -5137,6 +5243,8 @@ struct ITMVoxelBlock {
         for (auto& i : blockVoxels) i = ITMVoxel();
     }
     /// compute voxelLocalId to access blockVoxels
+    // TODO Vector3i is too general for the tightly limited range of valid values, c.f. assert statements below
+    // TODO unify and document the use of 'localPos'/'globalPos' variable names
     GPU_ONLY ITMVoxel* getVoxel(Vector3i localPos) {
         assert(localPos.x >= 0 && localPos.x < SDF_BLOCK_SIZE);
         assert(localPos.y >= 0 && localPos.y < SDF_BLOCK_SIZE);
@@ -5157,13 +5265,12 @@ struct ITMVoxelBlock {
     GPU_ONLY void reinit(VoxelBlockPos pos) {
         pos_ = pos;
 
-        // resetVoxels
-        for (auto& i : blockVoxels) i = ITMVoxel();
+        resetVoxels();
     }
 
     //private:
     /// pos is Mutable, 
-    /// because this voxel block might represent any part of space
+    /// because this voxel block might represent any part of space, and it might be freed and reallocated later to represent a different part
     VoxelBlockPos pos_;
 
     ITMVoxel blockVoxels[SDF_BLOCK_SIZE3];
@@ -5196,7 +5303,8 @@ struct ITMVoxelBlock {
 
 
 
-
+/// Allocate sizeof(T) * count bytes and initialize it from device memory.
+/// Used for debugging GPU memory from host 
 template<typename T>
 auto_ptr<T*> mallocAsDeviceCopy(DEVICEPTR(T*) p, uint count) {
     T* x = new T[count];
@@ -5224,7 +5332,7 @@ auto_ptr<T*> mallocAsDeviceCopy(DEVICEPTR(T*) p, uint count) {
 
 
 
-
+// GPU HashMap
 
 // Forward declarations
 template<typename Hasher, typename AllocCallback> class HashMap;
@@ -5240,21 +5348,40 @@ struct VoidSequenceIdAllocationCallback {
 /**
 Implements a
 
-key -> sequence#
+    key -> sequence#
 
-mapping on the GPU, where keys for which allocation is requested get assigned unique, consecutive unsigned integer numbers
+mapping on the GPU, where keys for which allocation is requested get assigned unique, 
+consecutive unsigned integer numbers ('sequence numbers')
 starting at 1.
+
+These sequence numbers might be used to index into a pre-allocated list of objects.
+This can be used to store sparse key-value data.
 
 Stores at most Hasher::BUCKET_NUM + EXCESS_NUM - 1 entries.
 
-After a series of requestAllocation(key) calls, performAllocations() must be called to make getSequenceId(key)
+After a series of 
+    requestAllocation(key)
+calls, 
+    performAllocations()
+must be called to make 
+    getSequenceId(key)
 return a unique nonzero value for key.
-Allocation is not guaranteed in only one requestAllocation(key) -> performAllocations() cycle:
+
+*Allocation is not guaranteed in only one requestAllocation(key) -> performAllocations() cycle*
 At most one entry will be allocated per hash(key) in one such cycle.
 
-Note: As this reads from global memory it might be advisable to cache results,
+c.f. ismar15infinitam.pdf
+
+Note: As getSequenceId(key) reads from global memory it might be advisable to cache results,
 especially when it is expected that the same entry is accessed multiple times from the same thread.
+
+    In particular, when you index into a custom large datastructure with the result of this, you might want to copy
+    the accessed data to __shared__ memory for optimum performance.
+
 TODO Can we provide this functionality from here? Maybe force the creation of some object including a cache to access this.
+TODO make public
+TODO allow freeing entries
+TODO allow choosing reliable allocation (using atomics...)
 */
 /* Implementation: See HashMap.png */
 template<
@@ -5316,7 +5443,7 @@ private:
     private:
         KeyType key;
         /// any of 1 to lowestFreeExcessListEntry-1
-        /// 0 means this entry ends a list of excess entries
+        /// 0 means this entry ends a list of excess entries and/or is not allocated
         uint nextInExcessList;
         /// any of 1 to lowestFreeSequenceNumber-1
         /// 0 means this entry is not allocated
@@ -5375,7 +5502,7 @@ private:
             hashEntry = excessList(hashMap_then_excessList_entry = hashEntry.getNextInExcessList());
             hashMap_then_excessList_entry += BUCKET_NUM; // the hashMap_then_excessList_entry must include the offset by BUCKET_NUM
             if (hashEntry.hasKey(key)) return true;
-            if (safe++ > 100) assert(false, "excessive amount of steps in excess list");
+            if (safe++ > 100) fatalError("excessive amount of steps in excess list");
         }
         return false;
     }
@@ -5418,7 +5545,7 @@ private:
         hprintf("newHashEntry.getSequenceId() = %d\n", newHashEntry.getSequenceId());
 
 #ifdef _DEBUG
-        // should now find this entry:
+        // we should now find this entry:
         HashEntry e; uint _;
         bool found = findEntry(key, e, _);
         assert(found && e.getSequenceId() > 0);
@@ -5453,6 +5580,8 @@ public:
     return getLowestFreeSequenceNumber() - 1;
     }
     */
+
+    // TODO should this ad-hoc crude serialization be part of this class?
 
     void serialize(ofstream& file) {
         bin(file, NUMBER_TOTAL_ENTRIES());
@@ -5506,7 +5635,10 @@ public:
         needsAllocation[hashMap_then_excessList_entry] = true;
         naKey[hashMap_then_excessList_entry] = key;
     }
-#define THREADS_PER_BLOCK 256
+
+    // during performAllocations
+#define THREADS_PER_BLOCK 256 // TODO which value works best?
+
     /**
     Allocates entries that requested allocation. Allocates at most one entry per hash(key).
     Further requests can allocate colliding entries.
@@ -5514,7 +5646,7 @@ public:
     void performAllocations() {
         //cudaSafeCall(cudaGetError());
         cudaSafeCall(cudaDeviceSynchronize()); // Managed this is not accessible when still in use?
-        LAUNCH_KERNEL(performAllocationKernel,
+        LAUNCH_KERNEL(performAllocationKernel, // Note: trivially parallelizable for-each type task
             /// Scheduling strategy: Fixed number of threads per block, working on all entries (to find those that have needsAllocation set)
             (uint)ceil(NUMBER_TOTAL_ENTRIES() / (1. * THREADS_PER_BLOCK)),
             THREADS_PER_BLOCK,
@@ -5540,7 +5672,7 @@ KERNEL performAllocationKernel(typename HashMap<Hasher, AllocCallback>* hashMap)
         gridDim.x*blockDim.x >= hashMap->NUMBER_TOTAL_ENTRIES() && // all entries covered
         gridDim.y == 1 &&
         gridDim.z == 1);
-
+    assert(linear_threadIdx() == blockIdx.x*THREADS_PER_BLOCK + threadIdx.x);
     hashMap->performAllocation(blockIdx.x*THREADS_PER_BLOCK + threadIdx.x);
 }
 
@@ -5560,7 +5692,7 @@ namespace HashMapTests {
 
         static GPU_ONLY uint hash(const T& blockPos) {
             return (((uint)blockPos.x * 73856093u) ^ ((uint)blockPos.y * 19349669u) ^ ((uint)blockPos.z * 83492791u))
-                &
+                & // optimization - has to be % if BUCKET_NUM is not a power of 2 // TODO can the compiler not figure this out?
                 (uint)(BUCKET_NUM - 1);
         }
     };
@@ -5581,10 +5713,10 @@ namespace HashMapTests {
 
 
     TEST(testZ3Hasher) {
-        // insert a lot of points into a large hash just for fun
+        // insert a lot of points (n) into a large hash just for fun
         HashMap<Z3Hasher<Vector3s>>* myHash = new HashMap<Z3Hasher<Vector3s>>(0x2000);
 
-        int n = 1000;
+        const int n = 1000;
         LAUNCH_KERNEL(alloc, n, 1, myHash);
 
         myHash->performAllocations();
@@ -5608,7 +5740,7 @@ namespace HashMapTests {
     // trivial hash function n -> n
     struct NHasher{
         typedef int KeyType;
-        static const uint BUCKET_NUM = 1;
+        static const uint BUCKET_NUM = 1; // can play with other values, the tests should support it
         static GPU_ONLY uint hash(const int& n) {
             return n % BUCKET_NUM;//& (BUCKET_NUM-1);
         }
@@ -5637,10 +5769,11 @@ namespace HashMapTests {
         myHash->performAllocations();
 
         // an additional alloc at another key not previously seen (e.g. BUCKET_NUM) 
+        // this will use the excess list
         LAUNCH_KERNEL(alloc, 1, 1, myHash, NHasher::BUCKET_NUM, p);
         myHash->performAllocations();
 
-        // an additional alloc at another key not previously seen (e.g. BUCKET_NUM + 1) makes it crash cuz no excess list
+        // an additional alloc at another key not previously seen (e.g. BUCKET_NUM + 1) makes it crash cuz no excess list space is left
         //alloc << <1, 1 >> >(myHash, NHasher::BUCKET_NUM + 1, p);
         myHash->performAllocations(); // performAllocations is always fine to call when no extra allocations where made
 
@@ -5781,8 +5914,9 @@ namespace HashMapTests {
 
 
 
-
-
+// Scene, stores VoxelBlocks
+// accessed via 'currentScene' to reduce amount of parameters passed to kernels
+// TODO maybe prefer passing (statelessness), remove 'current' notion (is this a pipeline like OpenGL with state?)
 
 
 // see doForEachAllocatedVoxel for T
@@ -6482,8 +6616,9 @@ GPU_ONLY inline float readFromSDF_float_uninterpolated(
     /* Coeff are the sub-block coordinates, used for interpolation*/\
     Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-// f(Vector3i globalPos, Vector3i lerpCoeff) is called on each globalPos bounding the given point
-// in no specifiec order
+// Given point in voxel-fractional-world-coordinates, this calls
+// f(Vector3i globalPos, Vector3i lerpCoeff) on each globalPos (voxel-world-coordinates) bounding the given point
+// in no specific order
 template<typename T>
 GPU_ONLY
 void forEachBoundingVoxel(
@@ -7032,7 +7167,7 @@ namespace rendering {
         isShader(renderColour);
         isShader(renderColourFromNormal);
         isShader(renderGrey);
-        assert(false, "unkown shader %s", shader.c_str());
+        fatalError("unkown shader %s", shader.c_str());
         return nullptr;
     }
 
@@ -8187,7 +8322,7 @@ namespace Lighting {
 
 
 
-            default: assert(false, "sphericalHarmonicHi not defined for i = %d", i);
+            default: fatalError("sphericalHarmonicHi not defined for i = %d", i);
             }
             return 0;
         }
@@ -9036,7 +9171,7 @@ extern "C" {
         
         auto v = render(p, shader, intrin);
 
-        // {rgbImage, depthImageData}
+        // Output: {rgbImage, depthImageData}
         WSPutFunction(stdlink, "List", 2);
         // rgb(a)
         {
@@ -9132,7 +9267,7 @@ extern "C" {
         //if (doTracking)
         // ;// putMatrix4f(currentView->depthImage->eyeCoordinates->fromGlobal);
         //else 
-            WL_RETURN_VOID();
+        WL_RETURN_VOID(); // only changes state, no immediate result
     }
 
 }
