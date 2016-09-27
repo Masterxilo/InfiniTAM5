@@ -24,6 +24,9 @@ data/*
 *.suo
 *.sdf
 *.pdb
+*.bin
+*.obj
+*.mx
 # =========================
 # Operating System Files
 # =========================

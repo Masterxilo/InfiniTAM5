@@ -7,6 +7,16 @@ except for (TODO: OPTIONAL DEPENDENCE) paulwl.h (and dependence on wsprep), this
 
 */
 
+/*
+Compile with nvcc sm_5 or higher
+
+To make this CUDA debuggable, be sure to adjust then environment:
+
+NSIGHT_CUDA_DEBUGGER=1
+
+SetEnvironment["NSIGHT_CUDA_DEBUGGER" -> "1"]
+*/
+
 // Standard/system headers
 #define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
@@ -201,7 +211,7 @@ __managed__ bool assertionFailed = false;
 
 #define END_SHOULD_FAIL() } catch(const std::exception& e) { /*cout << e.what();*/ } cudaDeviceSynchronize(); assertionThrowException = false; breakOnAssertion = true; if (assertionFailed) { ok = true; assertionFailed = false; } assert(ok, "expected an exception but got none"); }
 
-#define fatalError(...) {assert(false, __VA_ARGS__);}
+#define fatalError(commentFormat,...) {assert(false, commentFormat, __VA_ARGS__);}
 
 
 
@@ -231,9 +241,12 @@ __managed__ bool assertionFailed = false;
 
 
 
-// 3d to 1d coordinate conversion (think 3-digit mixed base number)
+// 3d to 1d coordinate conversion (think 3-digit mixed base number, where dim is the bases and id the digits)
 
 CPU_AND_GPU unsigned int toLinearId(const dim3 dim, const uint3 id) {
+    assert(id.x < dim.x);
+    assert(id.y < dim.y);
+    assert(id.z < dim.z); // actually, the highest digit (or all digits) could be allowed to be anything, but then the representation would not be unique
     return dim.x * dim.y * id.z + dim.x * id.y + id.x;
 }
 CPU_AND_GPU unsigned int toLinearId2D(const dim3 dim, const uint3 id) {
@@ -439,7 +452,7 @@ struct Managed {
         return ptr;
     }
 
-        void operator delete(void *ptr) {
+    void operator delete(void *ptr) {
         cudaDeviceSynchronize();  // did some earlier kernel throw an assert?
         cudaFree(ptr);
     }
@@ -596,8 +609,8 @@ void binread(ifstream& f, T* const x) {
     f.read((char*)x, sizeof(T));
 }
 
-#define SERIALIZE_VERSION(x) static const int serialize_version = x;
-#define SERIALIZE_WRITE_VERSION(file) bin(file, serialize_version);
+#define SERIALIZE_VERSION(x) static const int serialize_version = x
+#define SERIALIZE_WRITE_VERSION(file) bin(file, serialize_version)
 #define SERIALIZE_READ_VERSION(file) {const int sv = bin<int>(file); \
 assert(sv == serialize_version\
 , "Serialized version in file, '%d', does not match expected version '%d'"\
@@ -3467,7 +3480,10 @@ zmin zmax
 // Voxel Hashing definition and helper functions
 //////////////////////////////////////////////////////////////////////////
 
+// amount of voxels along one side of a voxel block
 #define SDF_BLOCK_SIZE 8
+
+// SDF_BLOCK_SIZE^3, amount of voxels in a voxel block
 #define SDF_BLOCK_SIZE3 (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE)
 
 // (Maximum) Number of actually stored blocks (i.e. maximum load the hash-table can actually have -- yes, we can never fill all buckets)
@@ -3568,8 +3584,8 @@ namespace memory {
             cudaFree(data_cuda);
 
             // HACK DEBUGGING set state to illegal values [
-            data_cpu = data_cuda = (T*)0xffffffffffffffffI64;
-            dataSize = 0xffffffffffffffffI64;
+            data_cpu = data_cuda = (T*)0xffffffffffffffffUI64;
+            dataSize = 0xffffffffffffffffUI64;
             state = (MemoryBlockState)0xffffffff;
             // ]
         }
@@ -4688,8 +4704,8 @@ public:
     /// Returns a ray starting at the camera origin and passing through the virtual camera plane
     /// pixel coordinates must be valid with regards to image size
     CPU_AND_GPU Ray getRayThroughPixel(Vector2i pixel, float depth) const {
-        assert(pixel.x >= 0 && pixel.x < imgSize().width);
-        assert(pixel.y >= 0 && pixel.y < imgSize().height);
+        assert(pixel.x >= 0 && pixel.x < image->noDims.width); // imgSize(). causes 1>J:/Masterarbeit/Implementation/InfiniTAM5/main.cu(4691): error : expected a field name -- compiler error?
+        assert(pixel.y >= 0 && pixel.y < image->noDims.height);   
         Vector4f f = depthTo3D(projParams(), pixel.x, pixel.y, depth);
         assert(f.z == depth);
         return Ray(location(), Vector(eyeCoordinates, f.toVector3()));
@@ -5203,7 +5219,7 @@ public:
     uchar w_color;
 
     // for vsfs:
-    /*
+
     //! unknowns of our objective
     float luminanceAlbedo; // a(v)
     //float refinedDistance; // D'(v)
@@ -5223,10 +5239,10 @@ public:
     CPU_AND_GPU Vector3f chromaticity() const {
         return clr.toFloat() / intensity();
     }
-    */
+    
 
     // NOTE not used inially when memory is just allocated and reinterpreted, but used on each allocation
-    GPU_ONLY ITMVoxel()
+    CPU_AND_GPU ITMVoxel()
     {
         setSDF_initialValue();
         w_depth = 0;
@@ -5239,30 +5255,33 @@ public:
 };
 
 struct ITMVoxelBlock {
-    GPU_ONLY void resetVoxels() {
+    CPU_AND_GPU void resetVoxels() {
         for (auto& i : blockVoxels) i = ITMVoxel();
     }
+
     /// compute voxelLocalId to access blockVoxels
     // TODO Vector3i is too general for the tightly limited range of valid values, c.f. assert statements below
     // TODO unify and document the use of 'localPos'/'globalPos' variable names
-    GPU_ONLY ITMVoxel* getVoxel(Vector3i localPos) {
+    CPU_AND_GPU ITMVoxel* getVoxel(Vector3i localPos) {
         assert(localPos.x >= 0 && localPos.x < SDF_BLOCK_SIZE);
         assert(localPos.y >= 0 && localPos.y < SDF_BLOCK_SIZE);
         assert(localPos.z >= 0 && localPos.z < SDF_BLOCK_SIZE);
 
         return &blockVoxels[
+            // Note that x changes fastest here, while in a mathematica 3D array with indices {x,y,z}
+            // x changes slowest!
             localPos.x + localPos.y * SDF_BLOCK_SIZE + localPos.z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
         ];
     }
 
-    GPU_ONLY VoxelBlockPos getPos() const {
+    CPU_AND_GPU VoxelBlockPos getPos() const {
         return pos_;
     }
 
     __declspec(property(get = getPos)) VoxelBlockPos pos;
 
     /// Initialize pos and reset data
-    GPU_ONLY void reinit(VoxelBlockPos pos) {
+    CPU_AND_GPU void reinit(VoxelBlockPos pos) {
         pos_ = pos;
 
         resetVoxels();
@@ -5343,7 +5362,7 @@ KERNEL performAllocationKernel(typename HashMap<Hasher, AllocCallback>* hashMap)
 
 struct VoidSequenceIdAllocationCallback {
     template<typename T>
-    static __device__ void allocate(T, int sequenceId) {}
+    static CPU_AND_GPU void allocate(T, int sequenceId) {}
 };
 /**
 Implements a
@@ -5385,8 +5404,8 @@ TODO allow choosing reliable allocation (using atomics...)
 */
 /* Implementation: See HashMap.png */
 template<
-    typename Hasher, //!< must have static __device__ function uint Hasher::hash(const KeyType&) which generates values from 0 to Hasher::BUCKET_NUM-1 
-    typename SequenceIdAllocationCallback = VoidSequenceIdAllocationCallback //!< must have static __device__ void  allocate(KeyType k, int sequenceId) function
+    typename Hasher, //!< must have static CPU_AND_GPU function uint Hasher::hash(const KeyType&) which generates values from 0 to Hasher::BUCKET_NUM-1 
+    typename SequenceIdAllocationCallback = VoidSequenceIdAllocationCallback //!< must have static CPU_AND_GPU void  allocate(KeyType k, int sequenceId) function
 >
 class HashMap : public Managed {
 public:
@@ -5401,31 +5420,31 @@ private:
 
     struct HashEntry {
     public:
-        GPU_ONLY bool isAllocated() {
+        CPU_AND_GPU bool isAllocated() {
             return sequenceId != 0;
         }
-        GPU_ONLY bool hasNextExcessList() {
+        CPU_AND_GPU bool hasNextExcessList() {
             assert(isAllocated());
             return nextInExcessList != 0;
         }
-        GPU_ONLY uint getNextInExcessList() {
+        CPU_AND_GPU uint getNextInExcessList() {
             assert(hasNextExcessList() && isAllocated());
             return nextInExcessList;
         }
 
-        GPU_ONLY bool hasKey(const KeyType& key) {
+        CPU_AND_GPU bool hasKey(const KeyType& key) {
             assert(isAllocated());
             return this->key == key;
         }
 
-        GPU_ONLY void linkToExcessListEntry(const uint excessListId) {
+        CPU_AND_GPU void linkToExcessListEntry(const uint excessListId) {
             assert(!hasNextExcessList() && isAllocated() && excessListId >= 1);// && excessListId < EXCESS_NUM);
             // also, the excess list entry should exist and this should be the only entry linking to it
             // all entries in the excess list before this one should be allocated
             nextInExcessList = excessListId;
         }
 
-        GPU_ONLY void allocate(const KeyType& key, const uint sequenceId) {
+        CPU_AND_GPU void allocate(const KeyType& key, const uint sequenceId) {
             assert(!isAllocated() && nextInExcessList == 0);
             assert(sequenceId > 0);
             this->key = key;
@@ -5436,7 +5455,7 @@ private:
             hprintf("allocated %d\n", sequenceId);
         }
 
-        GPU_ONLY uint getSequenceId() {
+        CPU_AND_GPU uint getSequenceId() {
             assert(isAllocated());
             return sequenceId;
         }
@@ -5454,22 +5473,31 @@ public:
     /// BUCKET_NUM + EXCESS_NUM many, information for the next round of allocations
     /// Note that equal hashes will clash only once
 
+    /// Whether the corresponding entry should be allocated
     /// 0 or 1 
+    /// TODO could save memory (&bandwidth) by using a bitmap
     MemoryBlock<uchar> needsAllocation;
+
+    /// With which key the corresponding entry should be allocated
+    /// TODO if there where an 'illegal key' entry, the above would not be needed. However, we would need to read 
+    // a full key instead of 1 byte in more threads.
+    /// State undefined for entries that don't need allocation
     MemoryBlock<KeyType> naKey;
 
-private:
+    // TODO how much does separating allocation and requesting allocation really help?
+
+//private:
     /// BUCKET_NUM + EXCESS_NUM many
     /// Indexed by Hasher::hash() return value
     // or BUCKET_NUM + HashEntry.nextInExcessList (which is any of 1 to lowestFreeExcessListEntry-1)
     MemoryBlock<HashEntry> hashMap_then_excessList;
 
-
-    GPU_ONLY HashEntry& hashMap(const uint hash) {
+private:
+    CPU_AND_GPU HashEntry& hashMap(const uint hash) {
         assert(hash < BUCKET_NUM);
         return hashMap_then_excessList[hash];
     }
-    GPU_ONLY HashEntry& excessList(const uint excessListEntry) {
+    CPU_AND_GPU HashEntry& excessList(const uint excessListEntry) {
         assert(excessListEntry >= 1 && excessListEntry < EXCESS_NUM);
         return hashMap_then_excessList[BUCKET_NUM + excessListEntry];
     }
@@ -5484,7 +5512,7 @@ private:
     /// Follows the excess list starting at hashMap[Hasher::hash(key)]
     /// until either hashEntry.key == key, returning true
     /// or until hashEntry does not exist or hashEntry.key != key but there is no further entry, returns false in that case.
-    GPU_ONLY bool findEntry(const KeyType& key,//!< [in]
+    CPU_AND_GPU bool findEntry(const KeyType& key,//!< [in]
         HashEntry& hashEntry, //!< [out]
         uint& hashMap_then_excessList_entry //!< [out]
         ) {
@@ -5507,12 +5535,84 @@ private:
         return false;
     }
 
-    GPU_ONLY void allocate(HashEntry& hashEntry, const KeyType & key) {
+    CPU_AND_GPU void allocate(HashEntry& hashEntry, const KeyType & key) {
+#if GPU_CODE
         hashEntry.allocate(key, atomicAdd(&lowestFreeSequenceNumber, 1));
+#else /* assume single-threaded cpu */
+        hashEntry.allocate(key, lowestFreeSequenceNumber++);
+#endif
     }
 
     friend KERNEL performAllocationKernel<Hasher, SequenceIdAllocationCallback>(typename HashMap<Hasher, SequenceIdAllocationCallback>* hashMap);
 
+
+    /// Given a key that does not yet exist, find a location in the hashMap_then_excessList
+    /// that can be used to insert the key (or is the end of the current excess list for the keys with the same hash as this)
+    /// returns (uint)-1 if the key already exists
+    CPU_AND_GPU uint findLocationForKey(const KeyType& key) {
+        hprintf("findLocationForKey \n");
+
+        HashEntry hashEntry;
+        uint hashMap_then_excessList_entry;
+
+        bool alreadyExists = findEntry(key, hashEntry, hashMap_then_excessList_entry);
+        if (alreadyExists) {
+            hprintf("already exists\n");
+            return -1;
+        }
+        hprintf("request goes to %d\n", hashMap_then_excessList_entry);
+
+        assert(hashMap_then_excessList_entry != BUCKET_NUM &&
+            hashMap_then_excessList_entry < NUMBER_TOTAL_ENTRIES());
+        return hashMap_then_excessList_entry;
+    }
+    
+    /// hashMap_then_excessList_entry is an index into hashMap_then_excessList that is either free or the current
+    /// end of the excess list for keys with the same hash as key.
+    /// \returns the sequence number of the newly allocated entry
+    CPU_AND_GPU uint performSingleAllocation(const KeyType& key, const uint hashMap_then_excessList_entry) {
+        if (hashMap_then_excessList_entry == (uint)-1) return -1;
+        if (hashMap_then_excessList_entry >= NUMBER_TOTAL_ENTRIES()) return -1;
+
+        // Allocate in place if not allocated
+        HashEntry& hashEntry = hashMap_then_excessList[hashMap_then_excessList_entry];
+
+        if (!hashEntry.isAllocated()) {
+            hprintf("not allocated\n", hashMap_then_excessList_entry);
+            allocate(hashEntry, key);
+            goto done;
+        }
+
+        hprintf("hashEntry %d\n", hashEntry.getSequenceId());
+
+        // If existing, allocate new and link parent to child
+#if GPU_CODE
+        const uint excessListId = atomicAdd(&lowestFreeExcessListEntry, 1);
+#else /* assume single-threaded cpu code */
+        const uint excessListId = lowestFreeExcessListEntry++;
+#endif
+
+        HashEntry& newHashEntry = excessList(excessListId);
+        assert(!newHashEntry.isAllocated());
+        hashEntry.linkToExcessListEntry(excessListId);
+        assert(hashEntry.getNextInExcessList() == excessListId);
+
+        allocate(newHashEntry, key);
+        hprintf("newHashEntry.getSequenceId() = %d\n", newHashEntry.getSequenceId());
+
+        done:
+#ifdef _DEBUG
+        // we should now find this entry:
+        HashEntry e; uint _;
+        bool found = findEntry(key, e, _);
+        assert(found && e.getSequenceId() > 0);
+        hprintf("%d = findEntry(), e.seqId = %d\n", found, e.getSequenceId());
+#endif
+        return e.getSequenceId();
+    }
+
+    /// Perform allocation per-thread function, extracting key from naKey, then using performSingleAllocation 
+    /// at the known _entry location
     GPU_ONLY void performAllocation(const uint hashMap_then_excessList_entry) {
         if (hashMap_then_excessList_entry >= NUMBER_TOTAL_ENTRIES()) return;
         if (!needsAllocation[hashMap_then_excessList_entry]) return;
@@ -5523,34 +5623,8 @@ private:
         needsAllocation[hashMap_then_excessList_entry] = false;
         KeyType key = naKey[hashMap_then_excessList_entry];
 
-        // Allocate in place if not allocated
-        HashEntry& hashEntry = hashMap_then_excessList[hashMap_then_excessList_entry];
-
-        if (!hashEntry.isAllocated()) {
-            hprintf("not allocated\n", hashMap_then_excessList_entry);
-            allocate(hashEntry, key);
-            return;
-        }
-
-        hprintf("hashEntry %d\n", hashEntry.getSequenceId());
-
-        // If existing, allocate new and link parent to child
-        uint excessListId = atomicAdd(&lowestFreeExcessListEntry, 1);
-        HashEntry& newHashEntry = excessList(excessListId);
-        assert(!newHashEntry.isAllocated());
-        hashEntry.linkToExcessListEntry(excessListId);
-        assert(hashEntry.getNextInExcessList() == excessListId);
-
-        allocate(newHashEntry, key);
-        hprintf("newHashEntry.getSequenceId() = %d\n", newHashEntry.getSequenceId());
-
-#ifdef _DEBUG
-        // we should now find this entry:
-        HashEntry e; uint _;
-        bool found = findEntry(key, e, _);
-        assert(found && e.getSequenceId() > 0);
-        hprintf("%d = findEntry(), e.seqId = %d\n", found, e.getSequenceId());
-#endif
+        const auto sid = performSingleAllocation(key, hashMap_then_excessList_entry);
+        assert(sid > 0);
     }
 
 
@@ -5594,6 +5668,15 @@ public:
         hashMap_then_excessList.serialize(file);
     }
 
+    /*
+    reads from the binary file:
+    - lowestFreeSequenceNumber
+    - lowestFreeExcessListEntry
+    - needsAllocation (ideally this is not in a dirty state currently, i.e. all 0)
+    - naKey (ditto)
+    - hashMap_then_excessList
+    version and size of these structures in the file must match (full binary dump)
+    */
     // loses current data
     void deserialize(ifstream& file) {
         assert(NUMBER_TOTAL_ENTRIES() == bin<uint>(file));
@@ -5614,23 +5697,21 @@ public:
     GPU_ONLY void requestAllocation(const KeyType& key) {
         hprintf("requestAllocation \n");
 
-        HashEntry hashEntry; uint hashMap_then_excessList_entry;
+        uint hashMap_then_excessList_entry = findLocationForKey(key);
 
-        bool alreadyExists = findEntry(key, hashEntry, hashMap_then_excessList_entry);
-        if (alreadyExists) {
+        if (hashMap_then_excessList_entry == (uint)-1) {
             hprintf("already exists\n");
             return;
         }
-        hprintf("request goes to %d\n", hashMap_then_excessList_entry);
+
+        assert(hashMap_then_excessList_entry != BUCKET_NUM &&
+            hashMap_then_excessList_entry < NUMBER_TOTAL_ENTRIES());
 
         // not strictly necessary, ordering is random anyways
         if (needsAllocation[hashMap_then_excessList_entry]) {
             hprintf("already requested\n");
             return;
         }
-
-        assert(hashMap_then_excessList_entry != BUCKET_NUM &&
-            hashMap_then_excessList_entry < NUMBER_TOTAL_ENTRIES());
 
         needsAllocation[hashMap_then_excessList_entry] = true;
         naKey[hashMap_then_excessList_entry] = key;
@@ -5657,8 +5738,15 @@ public:
         cudaSafeCall(cudaGetLastError());
     }
 
+    /// Allocate and assign a sequence number for the given key.
+    /// Note: Potentially slower than requesting a whole bunch, then allocating all at once, use as fallback.
+    /// \returns the sequence number of the newly allocated entry
+    CPU_AND_GPU uint performSingleAllocation(const KeyType& key) {
+        return performSingleAllocation(key, findLocationForKey(key));
+    }
+
     /// \returns 0 if the key is not allocated
-    GPU_ONLY uint getSequenceNumber(const KeyType& key) {
+    CPU_AND_GPU uint getSequenceNumber(const KeyType& key) {
         HashEntry hashEntry; uint _;
         if (!findEntry(key, hashEntry, _)) return 0;
         return hashEntry.getSequenceId();
@@ -5672,7 +5760,7 @@ KERNEL performAllocationKernel(typename HashMap<Hasher, AllocCallback>* hashMap)
         gridDim.x*blockDim.x >= hashMap->NUMBER_TOTAL_ENTRIES() && // all entries covered
         gridDim.y == 1 &&
         gridDim.z == 1);
-    assert(linear_threadIdx() == blockIdx.x*THREADS_PER_BLOCK + threadIdx.x);
+    assert(linear_global_threadId() == blockIdx.x*THREADS_PER_BLOCK + threadIdx.x);
     hashMap->performAllocation(blockIdx.x*THREADS_PER_BLOCK + threadIdx.x);
 }
 
@@ -5690,7 +5778,7 @@ namespace HashMapTests {
         typedef T KeyType;
         static const uint BUCKET_NUM = 0x1000; // Number of Hash Bucket, must be 2^n (otherwise we have to use % instead of & below)
 
-        static GPU_ONLY uint hash(const T& blockPos) {
+        static CPU_AND_GPU uint hash(const T& blockPos) {
             return (((uint)blockPos.x * 73856093u) ^ ((uint)blockPos.y * 19349669u) ^ ((uint)blockPos.z * 83492791u))
                 & // optimization - has to be % if BUCKET_NUM is not a power of 2 // TODO can the compiler not figure this out?
                 (uint)(BUCKET_NUM - 1);
@@ -5741,7 +5829,7 @@ namespace HashMapTests {
     struct NHasher{
         typedef int KeyType;
         static const uint BUCKET_NUM = 1; // can play with other values, the tests should support it
-        static GPU_ONLY uint hash(const int& n) {
+        static CPU_AND_GPU uint hash(const int& n) {
             return n % BUCKET_NUM;//& (BUCKET_NUM-1);
         }
     };
@@ -5799,7 +5887,7 @@ namespace HashMapTests {
     struct ZeroHasher{
         typedef int KeyType;
         static const uint BUCKET_NUM = 0x1;
-        static GPU_ONLY uint hash(const int&) { return 0; }
+        static CPU_AND_GPU uint hash(const int&) { return 0; }
     };
 
     KERNEL get(HashMap<ZeroHasher>* myHash, int p, int* o) {
@@ -5935,7 +6023,8 @@ KERNEL doForEachAllocatedVoxelBlock(
     ITMVoxelBlock* localVBA, uint nextFreeSequenceId
     ) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index <= 0 || index >= nextFreeSequenceId) return;
+    if (index <= 0 /* valid sequence nubmers start at 1 - TODO this knowledge should not be repeated here */
+        || index >= nextFreeSequenceId) return;
 
     ITMVoxelBlock* vb = &localVBA[index];
     T::process(vb);
@@ -5950,10 +6039,26 @@ public:
     GPU_ONLY ITMVoxel* getVoxel(Vector3i pos);
 
     /// \returns a voxel block from the localVBA
-    GPU_ONLY ITMVoxelBlock* getVoxelBlockForSequenceNumber(unsigned int sequenceNumber);
+    CPU_AND_GPU ITMVoxelBlock* getVoxelBlockForSequenceNumber(unsigned int sequenceNumber);
+
+    // Two-phase allocation:
 
     /// Returns NULL if the voxel block is not allocated
     GPU_ONLY void requestVoxelBlockAllocation(VoxelBlockPos pos);
+    static void Scene::performCurrentSceneAllocations();
+
+
+#define CURRENT_SCENE_SCOPE(s) Scene::CurrentSceneScope currentSceneScope(s);
+
+    /// Immediately allocate a voxel block at the given location.
+    /// Perfer requestVoxelBlockAllocation & performCurrentSceneAllocations over this
+    /// TODO how much performance is gained by not immediately allocating?
+    unsigned int performVoxelBlockAllocation(VoxelBlockPos pos) {
+        CURRENT_SCENE_SCOPE(this); // current scene has to be set for AllocateVB::allocate
+        const unsigned int sequenceNumber = voxelBlockHash->performSingleAllocation(pos);
+        assert(sequenceNumber > 0); // valid sequence numbers are > 0 -- TODO don't repeat this here
+        return sequenceNumber;
+    }
 
     Scene(const float newVoxelSize = 0.005f);
     virtual ~Scene();
@@ -5998,14 +6103,13 @@ public:
         return getCurrentScene()->requestVoxelBlockAllocation(pos);
     }
 
-    static void Scene::performCurrentSceneAllocations();
 
     /** !private! But has to be placed in public for HashMap to access it - unless we make that a friend */
     struct Z3Hasher {
         typedef VoxelBlockPos KeyType;
         static const uint BUCKET_NUM = SDF_BUCKET_NUM; // Number of Hash Bucket, must be 2^n (otherwise we have to use % instead of & below)
 
-        static GPU_ONLY uint hash(const VoxelBlockPos& blockPos) {
+        static CPU_AND_GPU uint hash(const VoxelBlockPos& blockPos) {
             return (((uint)blockPos.x * 73856093u) ^ ((uint)blockPos.y * 19349669u) ^ ((uint)blockPos.z * 83492791u))
                 &
                 (uint)(BUCKET_NUM - 1);
@@ -6014,7 +6118,7 @@ public:
 
     /** !private! But has to be placed in public for HashMap to access it - unless we make that a friend*/
     struct AllocateVB {
-        static __device__ void allocate(VoxelBlockPos pos, int sequenceId);
+        static CPU_AND_GPU void allocate(VoxelBlockPos pos, int sequenceId);
     };
 
     // Scene is mostly fixed. // TODO prefer using a scoping construct that lives together with the call stack!
@@ -6036,7 +6140,6 @@ public:
     private:
         Scene* const oldCurrentScene;
     };
-#define CURRENT_SCENE_SCOPE(s) Scene::CurrentSceneScope currentSceneScope(s);
 
     SERIALIZE_VERSION(2);
     void serialize(ofstream& file) {
@@ -6050,6 +6153,13 @@ public:
         localVBA.serialize(file);
     }
 
+    /*
+    reads from the binary file:
+    - the voxel size
+    - the full voxelBlockHash
+    - the full localVBA
+    version and size of these structures in the file must match (full binary dump)
+    */
     void deserialize(ifstream& file) {
         SERIALIZE_READ_VERSION(file);
 
@@ -6060,6 +6170,7 @@ public:
         localVBA.deserialize(file);
         assert(localVBA.dataSize == SDF_LOCAL_BLOCK_NUM);
 
+        // Assert that the file ends here
         // TODO assuming a file ends with serialized scene -- not necessarily so
         int x;  file >> x;
         assert(file.bad() || file.eof());
@@ -6080,6 +6191,10 @@ public:
     CPU_AND_GPU float getVoxelSize() const {
         assert(this);
         return voxelSize_;
+    }
+
+    CPU_AND_GPU unsigned int countVoxelBlocks() {
+        return voxelBlockHash->getLowestFreeSequenceNumber() - 1;
     }
 
     /// (0,0,0) is the lower corner of the first voxel block, (1,1,1) its upper corner,
@@ -6151,7 +6266,7 @@ void Scene::setCurrentScene(Scene* s) {
 
 
 // performAllocations -- private:
-__device__ void Scene::AllocateVB::allocate(VoxelBlockPos pos, int sequenceId) {
+CPU_AND_GPU void Scene::AllocateVB::allocate(VoxelBlockPos pos, int sequenceId) {
     assert(Scene::getCurrentScene());
     assert(sequenceId < SDF_LOCAL_BLOCK_NUM, "%d >= %d -- not enough voxel blocks", sequenceId, SDF_LOCAL_BLOCK_NUM);
     Scene::getCurrentScene()->localVBA[sequenceId].reinit(pos);
@@ -6197,9 +6312,14 @@ GPU_ONLY ITMVoxel* Scene::getVoxel(Vector3i point) {
     return b->getVoxel(localPos);
 }
 
-GPU_ONLY ITMVoxelBlock* Scene::getVoxelBlockForSequenceNumber(unsigned int sequenceNumber) {
-    assert(sequenceNumber < SDF_LOCAL_BLOCK_NUM);
-    assert(sequenceNumber < voxelBlockHash->getLowestFreeSequenceNumber());
+CPU_AND_GPU ITMVoxelBlock* Scene::getVoxelBlockForSequenceNumber(unsigned int sequenceNumber) {
+    assert(sequenceNumber >= 1 && sequenceNumber < SDF_LOCAL_BLOCK_NUM, "illegal sequence number %d (must be >= 1, < %d)", sequenceNumber, SDF_LOCAL_BLOCK_NUM);
+    assert(sequenceNumber < voxelBlockHash->getLowestFreeSequenceNumber(), 
+        "unallocated sequence number %d (lowest free: %d)"
+        , sequenceNumber
+        , voxelBlockHash->getLowestFreeSequenceNumber()
+        );
+
     return &localVBA[sequenceNumber];
 }
 
@@ -8800,7 +8920,8 @@ namespace meshing {
         return cubeIndex;
     }
 
-    const uint noMaxTriangles = SDF_LOCAL_BLOCK_NUM * 32; // heuristic ?!
+    const uint noMaxTriangles = 10 * 1000 * 1000;//SDF_LOCAL_BLOCK_NUM * 32; // heuristic ?! // if anything, consider allocated blocks
+    // and max triangles per marching cube and assume moderate occupation of blocks (like, half)
 
     __managed__ Triangle *triangles;
     __managed__ unsigned int noTriangles;
@@ -8839,6 +8960,8 @@ namespace meshing {
         Scene::getCurrentScene()->doForEachAllocatedVoxel<MeshVoxel>();
         cudaDeviceSynchronize();
         assert(noTriangles);
+        assert(noMaxTriangles);
+        assert(noTriangles < noMaxTriangles);
 
 
         // Write
@@ -9012,10 +9135,103 @@ namespace WSTP {
             dims, heads, 3);
     }
 
+    // putFloatList rather
     void putFloatArray(const float* a, const int n) {
         int dims[] = {n};
         const char* heads[] = {"List"};
-        WSPutReal32Array(stdlink, a, dims, heads, 1);
+        WSPutReal32Array(stdlink, a, dims, heads, 1); // use List function
+    }
+
+    void putUnorm(unsigned char c) {
+        WSPutReal(stdlink, 1. * c / UCHAR_MAX);
+    }
+
+    unsigned char getUnormUC() {
+        double d;  WSGetDouble(stdlink, &d);
+        return d * UCHAR_MAX;
+    }
+
+    void putColor(Vector3u c) {
+        WSPutFunction(stdlink, "List", 3);
+        putUnorm(c.r);
+        putUnorm(c.g);
+        putUnorm(c.b);
+    }
+
+    Vector3u getColor() {
+        long args; WSCheckFunction(stdlink, "List", &args);
+        assert(args == 3);
+
+        unsigned char r = getUnormUC(), g = getUnormUC(), b = getUnormUC();
+        return Vector3u(r, g, b);
+    }
+
+    // {normalizedSDF_?SNormQ, sdfSampleCount_Integer?NonNegative, color : {r_?UNormQ, g_?UNormQ, b_?UNormQ}, colorSampleCount_Integer?NonNegative}
+    void putVoxel(const ITMVoxel& v) {
+        WSPutFunction(stdlink, "List", 4);
+
+        WSPutReal(stdlink, v.getSDF());
+        WSPutInteger(stdlink, v.w_depth);
+        putColor(v.clr);
+        WSPutInteger(stdlink, v.w_color);
+    }
+    
+#include <sal.h>
+    void getVoxel(_Out_ ITMVoxel& v) {
+        long args;
+        WSCheckFunction(stdlink, "List", &args);
+        assert(args == 4);
+
+        float f; WSGetFloat(stdlink, &f); v.setSDF(f);
+        WSGetInteger8(stdlink, &v.w_depth);
+        v.clr = getColor();
+        WSGetInteger8(stdlink, &v.w_color);
+    }
+
+
+    // {{x_Integer,y_Integer,z_Integer}, {__Voxel}}
+    void putVoxelBlock(ITMVoxelBlock& v) {
+        WSPutFunction(stdlink, "List", 2);
+        
+        WSPutInteger16List(stdlink, (short*)&v.pos_, 3); // TODO are these packed correctly?
+
+        WSPutFunction(stdlink, "List", SDF_BLOCK_SIZE3);
+        /*for (int i = 0; i < SDF_BLOCK_SIZE3; i++)
+            putVoxel(v.blockVoxels[i]);*/
+        // change ordering such that {x,y,z} indices in mathematica correspond to xyz here:
+        // make z vary fastest
+        for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+            for (int y = 0; y < SDF_BLOCK_SIZE; y++)
+                for (int z = 0; z < SDF_BLOCK_SIZE; z++)
+                    putVoxel(*v.getVoxel(Vector3i(x,y,z)));
+
+    }
+
+    // receives {{x_Integer,y_Integer,z_Integer}, {__Voxel}}
+    void getVoxelBlock(_Out_ ITMVoxelBlock& v) {
+        long args;
+        WSCheckFunction(stdlink, "List", &args);
+        assert(args == 2);
+
+        int count; short* ppos; WSGetInteger16List(stdlink, &ppos, &count);
+        assert(count == 3);
+        v.reinit(VoxelBlockPos(ppos));
+        assert(v.getPos() != INVALID_VOXEL_BLOCK_POS);
+        WSReleaseInteger16List(stdlink, ppos, count);
+
+        WSCheckFunction(stdlink, "List", &args);
+        assert(args == SDF_BLOCK_SIZE3);
+
+        /*
+        for (int i = 0; i < SDF_BLOCK_SIZE3; i++)
+            getVoxel(v.blockVoxels[i]);
+            */
+        // change ordering such that {x,y,z} indices in mathematica correspond to xyz here:
+        // make z vary fastest
+        for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+            for (int y = 0; y < SDF_BLOCK_SIZE; y++)
+                for (int z = 0; z < SDF_BLOCK_SIZE; z++)
+                    getVoxel(*v.getVoxel(Vector3i(x,y,z)));
     }
 
     Matrix4f getMatrix4f()
@@ -9050,6 +9266,8 @@ namespace WSTP {
         return m;
     }
 
+
+
     void putMatrix4f(Matrix4f m) {
         int dims[] = {4, 4};
         const char* heads[] = {"List", "List"};
@@ -9082,9 +9300,47 @@ extern "C" {
         return addScene(new Scene(voxelSize_));
     }
 
-
     double getSceneVoxelSize(int id) {
         return getScene(id)->getVoxelSize();
+    }
+
+    int countVoxelBlocks(int id) {
+        return getScene(id)->countVoxelBlocks();
+    }
+
+    // Manually insert a *new* voxel block
+    // TODO what should happen when it already exists?
+    // format: c.f. getVoxelBlock
+    void putVoxelBlock(int id) {
+        auto s = getScene(id);
+
+        int vbCountBefore = s->countVoxelBlocks();
+
+        ITMVoxelBlock receivedVb;
+        getVoxelBlock(receivedVb);
+        assert(receivedVb.getPos() != INVALID_VOXEL_BLOCK_POS);
+
+        auto& sceneVb = *s->getVoxelBlockForSequenceNumber(s->performVoxelBlockAllocation(receivedVb.getPos()));
+        assert(sceneVb.getPos() == receivedVb.getPos());
+        sceneVb = receivedVb; // copy
+
+        // synchronize (otherwise, gpu code hangs) - TODO why exactly?
+        s->voxelBlockHash->naKey.Synchronize();
+        s->voxelBlockHash->needsAllocation.Synchronize();
+        s->voxelBlockHash->hashMap_then_excessList.Synchronize();
+        s->localVBA.Synchronize();
+
+        assert(vbCountBefore + 1 == s->countVoxelBlocks());
+        cudaDeviceSynchronize();
+        WL_RETURN_VOID();
+    }
+
+    // {__VoxelBlock} at most max many. 0 or negative numbers mean all
+    void getVoxelBlock(int id, int i) {
+        auto s = getScene(id);
+        const int n = s->voxelBlockHash->getLowestFreeSequenceNumber();
+        assert(i >= 1 /* valid sequence nubmers start at 1 - TODO this knowledge should not be repeated here */ && i < n, "there is no voxelBlock with index %d, valid indices are 1 to %d", i, n-1);
+        putVoxelBlock(s->localVBA[i]);
     }
 
     void serializeScene(int id, char* fn) {

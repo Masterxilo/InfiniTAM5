@@ -1,6 +1,6 @@
 :Evaluate: $oldContextPath = $ContextPath; $ContextPath = {"System`", "Global`"}; (* these are the only dependencies *)
 :Evaluate: Begin@"InfiniTAM`Private`" (* create everythin in InfiniTAM`Private`* *)
-:Evaluate: ClearAll@"InfiniTAM`Private`*" (* create everythin in InfiniTAM`Private`* *)
+:Evaluate: UnprotectClearAll@"InfiniTAM`Private`*" (* create everythin in InfiniTAM`Private`* *)
 
 :Begin:
 :Function:       createScene
@@ -13,7 +13,7 @@
 
 :Begin:
 :Function:       getSceneVoxelSize
-:Pattern:        getSceneVoxelSize[id_Integer]
+:Pattern:        getSceneVoxelSize[id_Integer?NonNegative]
 :Arguments:      { id }
 :ArgumentTypes:  { Integer }
 :ReturnType:     Real
@@ -22,7 +22,7 @@
 
 :Begin:
 :Function:       serializeScene
-:Pattern:        serializeScene[id_Integer, fn_String]
+:Pattern:        serializeScene[id_Integer?NonNegative, fn_String]
 :Arguments:      { id, fn }
 :ArgumentTypes:  { Integer, String }
 :ReturnType:     Manual
@@ -31,7 +31,7 @@
 
 :Begin:
 :Function:       deserializeScene
-:Pattern:        deserializeScene[id_Integer, fn_String]
+:Pattern:        deserializeScene[id_Integer?NonNegative, fn_String]
 :Arguments:      { id, fn }
 :ArgumentTypes:  { Integer, String }
 :ReturnType:     Manual
@@ -39,8 +39,33 @@
 
 
 :Begin:
+:Function:       countVoxelBlocks
+:Pattern:        countVoxelBlocks[id_Integer?NonNegative]
+:Arguments:      { id }
+:ArgumentTypes:  { Integer }
+:ReturnType:     Integer
+:End:
+
+
+:Begin:
+:Function:       getVoxelBlock
+:Pattern:        getVoxelBlock[id_Integer?NonNegative, i_Integer?Positive]
+:Arguments:      { id, i }
+:ArgumentTypes:  { Integer, Integer }
+:ReturnType:     Manual
+:End:
+
+:Begin:
+:Function:       putVoxelBlock
+:Pattern:        putVoxelBlock[id_Integer?NonNegative, voxelBlockData : { {_,_,_} (*pos*), {__List} (*8^3 voxels' data*) }]
+:Arguments:      { id, voxelBlockData }
+:ArgumentTypes:  { Integer, Manual }
+:ReturnType:     Manual
+:End:
+
+:Begin:
 :Function:       meshScene
-:Pattern:        meshScene[id_Integer, fn_String]
+:Pattern:        meshScene[id_Integer?NonNegative, fn_String]
 :Arguments:      { id, fn }
 :ArgumentTypes:  { Integer, String }
 :ReturnType:     Manual
@@ -58,7 +83,7 @@
 
 :Begin:
 :Function:       computeArtificialLighting
-:Pattern:        computeArtificialLighting[id_Integer, dir : {_,_,_}?numericVectorQ]
+:Pattern:        computeArtificialLighting[id_Integer?NonNegative, dir : {_,_,_}?numericVectorQ]
 :Arguments:      { id, dir}
 :ArgumentTypes:  { Integer, RealList }
 :ReturnType:     Manual
@@ -67,7 +92,7 @@
 
 :Begin:
 :Function:       estimateLighting
-:Pattern:        estimateLighting[id_Integer]
+:Pattern:        estimateLighting[id_Integer?NonNegative]
 :Arguments:      { id }
 :ArgumentTypes:  { Integer }
 :ReturnType:     Manual
@@ -76,7 +101,7 @@
 
 :Begin:
 :Function:       buildSphereScene
-:Pattern:        buildSphereScene[id_Integer, rad_Real]
+:Pattern:        buildSphereScene[id_Integer?NonNegative, rad_Real]
 :Arguments:      { id, rad }
 :ArgumentTypes:  { Integer, Real }
 :ReturnType:     Manual
@@ -85,14 +110,14 @@
 :Begin:
 :Function:       renderScene
 :Pattern:        renderScene[
-        sceneId_Integer, 
+        id_Integer?NonNegative, 
         shader_String,
         (* Manual *)
         poseWorldToView_?PoseMatrixQ,
         rgbIntrinsics : NamelessIntrinsicsPattern[]
     ]
 
-:Arguments:      { sceneId, shader, poseWorldToView, rgbIntrinsics }
+:Arguments:      { id, shader, poseWorldToView, rgbIntrinsics }
 :ArgumentTypes:  { Integer, String, Manual }
 :ReturnType:     Manual
 :End:
@@ -100,7 +125,7 @@
 :Begin:
 :Function:       processFrame
 :Pattern:        processFrame[doTracking : 0|1
-    , sceneId_Integer
+    , id_Integer?NonNegative
     (* Manual *)
     , rgbaByteImage_ /;TensorQ[rgbaByteImage, IntegerQ] && Last@Dimensions@rgbaByteImage == 4
     , depthData_?NumericMatrixQ
@@ -109,7 +134,7 @@
     , intrinsicsD : NamelessIntrinsicsPattern[]
     , rgbToDepth_?PoseMatrixQ
     ]
-:Arguments:      { doTracking, sceneId, rgbaByteImage, depthData, poseWorldToView, intrinsicsRgb, intrinsicsD, rgbToDepth }
+:Arguments:      { doTracking, id, rgbaByteImage, depthData, poseWorldToView, intrinsicsRgb, intrinsicsD, rgbToDepth }
 :ArgumentTypes:  { Integer, Integer, Manual }
 :ReturnType:     Manual
 :End:
